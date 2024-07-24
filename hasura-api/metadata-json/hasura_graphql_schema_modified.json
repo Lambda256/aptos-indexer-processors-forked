@@ -418,6 +418,7 @@
                   "columns": [
                     "collection_id",
                     "collection_name",
+                    "collection_properties",
                     "creator_address",
                     "current_supply",
                     "description",
@@ -791,7 +792,7 @@
           },
           {
             "table": {
-              "name": "current_fungible_asset_balances",
+              "name": "current_unified_fungible_asset_balances_to_be_renamed",
               "schema": "public"
             },
             "configuration": {
@@ -1415,48 +1416,18 @@
               "from_env": "INDEXER_V2_POSTGRES_URL"
             },
             "isolation_level": "read-committed",
+            "pool_settings": {
+              "connection_lifetime": 600,
+              "max_connections": 48
+            },
             "use_prepared_statements": false
           }
         }
       }
     ],
-    "query_collections": [
-      {
-        "name": "allowed-queries",
-        "definition": {
-          "queries": [
-            {
-              "name": "Latest Processor Status",
-              "query": "query LatestProcessorStatus {\n  processor_status {\n    processor\n    last_updated\n    last_success_version\n    last_transaction_timestamp\n  }\n}"
-            }
-          ]
-        }
-      }
-    ],
-    "allowlist": [
-      {
-        "collection": "allowed-queries",
-        "scope": {
-          "global": true
-        }
-      }
-    ],
-    "rest_endpoints": [
-      {
-        "comment": "",
-        "definition": {
-          "query": {
-            "collection_name": "allowed-queries",
-            "query_name": "Latest Processor Status"
-          }
-        },
-        "methods": [
-          "GET"
-        ],
-        "name": "Latest Processor Status",
-        "url": "get_latest_processor_status"
-      }
-    ],
+    "query_collections": [],
+    "allowlist": [],
+    "rest_endpoints": [],
     "api_limits": {
       "depth_limit": {
         "global": 5,

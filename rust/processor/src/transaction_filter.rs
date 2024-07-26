@@ -83,7 +83,7 @@ impl TransactionFilter {
                         if let Some(Payload::EntryFunctionPayload(efp)) = payload.payload.as_ref() {
                             if let Some(function) = efp.function.as_ref() {
                                 if let Some(module) = function.module.as_ref() {
-                                    for &prefix in &skip_contract_prefix_names {
+                                    for prefix in skip_contract_prefix_names {
                                         if module.name.starts_with(prefix) {
                                             return false;
                                         }

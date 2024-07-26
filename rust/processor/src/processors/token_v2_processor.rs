@@ -488,7 +488,7 @@ fn insert_token_activities_v2_query(
     (
         diesel::insert_into(schema::token_activities_v2::table)
             .values(items_to_insert)
-            .on_conflict((transaction_version, event_index))
+            .on_conflict((transaction_timestamp, transaction_version, event_index))
             .do_update()
             .set((
                 is_fungible_v2.eq(excluded(is_fungible_v2)),

@@ -1,5 +1,5 @@
 {
-  "resource_version": 10,
+  "resource_version": 15,
   "metadata": {
     "version": 3,
     "sources": [
@@ -1352,6 +1352,57 @@
           },
           {
             "table": {
+              "name": "current_fungible_asset_balances",
+              "schema": "public"
+            },
+            "configuration": {
+              "column_config": {},
+              "custom_column_names": {},
+              "custom_name": "current_fungible_asset_balances",
+              "custom_root_fields": {}
+            },
+            "object_relationships": [
+              {
+                "name": "metadata",
+                "using": {
+                  "manual_configuration": {
+                    "column_mapping": {
+                      "asset_type": "asset_type"
+                    },
+                    "insertion_order": null,
+                    "remote_table": {
+                      "name": "fungible_asset_metadata",
+                      "schema": "public"
+                    }
+                  }
+                }
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "anonymous",
+                "permission": {
+                  "columns": [
+                    "amount",
+                    "asset_type",
+                    "is_frozen",
+                    "is_primary",
+                    "last_transaction_timestamp",
+                    "last_transaction_version",
+                    "owner_address",
+                    "storage_id",
+                    "token_standard"
+                  ],
+                  "filter": {},
+                  "limit": 100,
+                  "allow_aggregations": true
+                },
+                "comment": ""
+              }
+            ]
+          },
+          {
+            "table": {
               "name": "current_objects",
               "schema": "public"
             },
@@ -1704,57 +1755,6 @@
                   "filter": {},
                   "limit": 100
                 }
-              }
-            ]
-          },
-          {
-            "table": {
-              "name": "current_unified_fungible_asset_balances_to_be_renamed",
-              "schema": "public"
-            },
-            "configuration": {
-              "column_config": {},
-              "custom_column_names": {},
-              "custom_name": "current_fungible_asset_balances",
-              "custom_root_fields": {}
-            },
-            "object_relationships": [
-              {
-                "name": "metadata",
-                "using": {
-                  "manual_configuration": {
-                    "column_mapping": {
-                      "asset_type": "asset_type"
-                    },
-                    "insertion_order": null,
-                    "remote_table": {
-                      "name": "fungible_asset_metadata",
-                      "schema": "public"
-                    }
-                  }
-                }
-              }
-            ],
-            "select_permissions": [
-              {
-                "role": "anonymous",
-                "permission": {
-                  "columns": [
-                    "amount",
-                    "asset_type",
-                    "is_frozen",
-                    "is_primary",
-                    "last_transaction_timestamp",
-                    "last_transaction_version",
-                    "owner_address",
-                    "storage_id",
-                    "token_standard"
-                  ],
-                  "filter": {},
-                  "limit": 100,
-                  "allow_aggregations": true
-                },
-                "comment": ""
               }
             ]
           },
@@ -2342,10 +2342,7 @@
         }
       }
     ],
-    "query_collections": [],
-    "allowlist": [],
-    "rest_endpoints": [],
-    "api_limits": {
+     "api_limits": {
       "depth_limit": {
         "global": 5,
         "per_role": {}

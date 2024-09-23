@@ -65,6 +65,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
         working-directory: scripts
 
+      - name: Install Dependencies and Run Linter
+        uses: ./.github/actions/dep_install_and_lint
+        with:
+          working-directory: rust
+
+      - name: Run Integration Tests for Specific Crate
+        run: cargo test --manifest-path integration-tests/Cargo.toml
+        working-directory: rust
+
       - name: Release Images
         env:
           FORCE_COLOR: 3 # Force color output as per https://github.com/google/zx#using-github-actions

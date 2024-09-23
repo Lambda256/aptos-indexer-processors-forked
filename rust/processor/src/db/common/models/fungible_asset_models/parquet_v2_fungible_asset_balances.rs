@@ -26,8 +26,13 @@ use allocative_derive::Allocative;
 use aptos_protos::transaction::v1::{DeleteResource, WriteResource};
 use bigdecimal::{BigDecimal, Zero};
 use field_count::FieldCount;
+use lazy_static::lazy_static;
 use parquet_derive::ParquetRecordWriter;
 use serde::{Deserialize, Serialize};
+
+lazy_static! {
+    pub static ref DEFAULT_AMOUNT_VALUE: String = "0".to_string();
+}
 
 #[derive(
     Allocative, Clone, Debug, Default, Deserialize, FieldCount, ParquetRecordWriter, Serialize,
@@ -134,6 +139,7 @@ impl FungibleAssetBalance {
                 &delete_resource.r#type.as_ref().unwrap().generic_type_params[0],
                 delete_resource.type_str.as_ref(),
                 txn_version,
+                write_set_change_index,
             );
             if let Some(coin_type) = coin_info_type.get_coin_type_below_max() {
                 let owner_address = standardize_address(delete_resource.address.as_str());
@@ -147,7 +153,7 @@ impl FungibleAssetBalance {
                     asset_type: coin_type.clone(),
                     is_primary: true,
                     is_frozen: false,
-                    amount: "0".to_string(),
+                    amount: DEFAULT_AMOUNT_VALUE.clone(),
                     block_timestamp: txn_timestamp,
                     token_standard: TokenStandard::V1.to_string(),
                 };
@@ -187,6 +193,7 @@ impl FungibleAssetBalance {
                 &write_resource.r#type.as_ref().unwrap().generic_type_params[0],
                 write_resource.type_str.as_ref(),
                 txn_version,
+                write_set_change_index,
             );
             if let Some(coin_type) = coin_info_type.get_coin_type_below_max() {
                 let owner_address = standardize_address(write_resource.address.as_str());

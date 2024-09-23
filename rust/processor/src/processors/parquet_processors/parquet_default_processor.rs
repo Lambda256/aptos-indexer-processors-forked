@@ -9,15 +9,12 @@ use crate::{
     db::common::models::default_models::{
         parquet_move_modules::MoveModule,
         parquet_move_resources::MoveResource,
-        parquet_move_tables::{TableItem, TableMetadata},
+        parquet_move_tables::TableItem,
         parquet_transactions::{Transaction as ParquetTransaction, TransactionModel},
         parquet_write_set_changes::{WriteSetChangeDetail, WriteSetChangeModel},
     },
     gap_detectors::ProcessingResult,
-    processors::{
-        parquet_processors::{UploadIntervalConfig, GOOGLE_APPLICATION_CREDENTIALS},
-        ProcessorName, ProcessorTrait,
-    },
+    processors::{parquet_processors::ParquetProcessorTrait, ProcessorName, ProcessorTrait},
     utils::database::ArcDbPool,
 };
 use ahash::AHashMap;
@@ -41,7 +38,7 @@ pub struct ParquetDefaultProcessorConfig {
     pub max_buffer_size: usize,
     pub parquet_upload_interval: u64,
 }
-impl UploadIntervalConfig for ParquetDefaultProcessorConfig {
+impl ParquetProcessorTrait for ParquetDefaultProcessorConfig {
     fn parquet_upload_interval_in_secs(&self) -> Duration {
         Duration::from_secs(self.parquet_upload_interval)
     }
@@ -54,7 +51,6 @@ pub struct ParquetDefaultProcessor {
     wsc_sender: AsyncSender<ParquetDataGeneric<WriteSetChangeModel>>,
     table_item_sender: AsyncSender<ParquetDataGeneric<TableItem>>,
     move_module_sender: AsyncSender<ParquetDataGeneric<MoveModule>>,
-    table_metadata_sender: AsyncSender<ParquetDataGeneric<TableMetadata>>,
 }
 
 // TODO: Since each table item has different size allocated, the pace of being backfilled to PQ varies a lot.
@@ -65,9 +61,7 @@ impl ParquetDefaultProcessor {
         config: ParquetDefaultProcessorConfig,
         new_gap_detector_sender: AsyncSender<ProcessingResult>,
     ) -> Self {
-        if let Some(credentials) = config.google_application_credentials.clone() {
-            std::env::set_var(GOOGLE_APPLICATION_CREDENTIALS, credentials);
-        }
+        config.set_google_credentials(config.google_application_credentials.clone());
 
         let transaction_sender = create_parquet_handler_loop::<ParquetTransaction>(
             new_gap_detector_sender.clone(),
@@ -118,16 +112,6 @@ impl ParquetDefaultProcessor {
             config.parquet_upload_interval_in_secs(),
         );
 
-        let table_metadata_sender = create_parquet_handler_loop::<TableMetadata>(
-            new_gap_detector_sender.clone(),
-            ProcessorName::ParquetDefaultProcessor.into(),
-            config.bucket_name.clone(),
-            config.bucket_root.clone(),
-            config.parquet_handler_response_channel_size,
-            config.max_buffer_size,
-            config.parquet_upload_interval_in_secs(),
-        );
-
         Self {
             connection_pool,
             transaction_sender,
@@ -135,7 +119,6 @@ impl ParquetDefaultProcessor {
             wsc_sender,
             table_item_sender,
             move_module_sender,
-            table_metadata_sender,
         }
     }
 }
@@ -144,13 +127,12 @@ impl Debug for ParquetDefaultProcessor {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "ParquetProcessor {{ capacity of trnasactions channel: {:?}, capacity of move resource channel: {:?}, capacity of wsc channel: {:?}, capacity of table items channel: {:?}, capacity of move_module channel: {:?}, capacity of table_metadata channel: {:?} }}",
+            "ParquetProcessor {{ capacity of trnasactions channel: {:?}, capacity of move resource channel: {:?}, capacity of wsc channel: {:?}, capacity of table items channel: {:?}, capacity of move_module channel: {:?}}}",
             &self.transaction_sender.capacity(),
             &self.move_resource_sender.capacity(),
             &self.wsc_sender.capacity(),
             &self.table_item_sender.capacity(),
             &self.move_module_sender.capacity(),
-            &self.table_metadata_sender.capacity(),
         )
     }
 }
@@ -171,14 +153,7 @@ impl ProcessorTrait for ParquetDefaultProcessor {
         let last_transaction_timestamp = transactions.last().unwrap().timestamp.clone();
 
         let (
-            (
-                move_resources,
-                write_set_changes,
-                transactions,
-                table_items,
-                move_modules,
-                table_metadata,
-            ),
+            (move_resources, write_set_changes, transactions, table_items, move_modules),
             transaction_version_to_struct_count,
         ) = tokio::task::spawn_blocking(move || process_transactions(transactions))
             .await
@@ -221,15 +196,6 @@ impl ProcessorTrait for ParquetDefaultProcessor {
             .await
             .map_err(|e| anyhow!("Failed to send to parquet manager: {}", e))?;
 
-        let tm_parquet_data = ParquetDataGeneric {
-            data: table_metadata,
-        };
-
-        self.table_metadata_sender
-            .send(tm_parquet_data)
-            .await
-            .map_err(|e| anyhow!("Failed to send to parquet manager: {}", e))?;
-
         Ok(ProcessingResult::ParquetProcessingResult(
             ParquetProcessingResult {
                 start_version: start_version as i64,
@@ -256,7 +222,6 @@ pub fn process_transactions(
         Vec<TransactionModel>,
         Vec<TableItem>,
         Vec<MoveModule>,
-        Vec<TableMetadata>,
     ),
     AHashMap<i64, i64>,
 ) {
@@ -270,43 +235,34 @@ pub fn process_transactions(
     let mut move_modules = vec![];
     let mut move_resources = vec![];
     let mut table_items = vec![];
-    let mut table_metadata: AHashMap<String, TableMetadata> = AHashMap::new();
 
     for detail in wsc_details {
         match detail {
             WriteSetChangeDetail::Module(module) => {
-                move_modules.push(module.clone());
+                let txn_version = module.txn_version;
+                move_modules.push(module);
                 transaction_version_to_struct_count
-                    .entry(module.txn_version)
+                    .entry(txn_version)
                     .and_modify(|e| *e += 1)
                     .or_insert(1);
             },
             WriteSetChangeDetail::Resource(resource) => {
                 transaction_version_to_struct_count
                     .entry(resource.txn_version)
-                    .and_modify(|e| *e += 1);
+                    .and_modify(|e| *e += 1)
+                    .or_insert(1);
                 move_resources.push(resource);
             },
-            WriteSetChangeDetail::Table(item, _current_item, metadata) => {
+            WriteSetChangeDetail::Table(item, _current_item, _) => {
                 let txn_version = item.txn_version;
                 transaction_version_to_struct_count
                     .entry(txn_version)
-                    .and_modify(|e| *e += 1);
+                    .and_modify(|e| *e += 1)
+                    .or_insert(1);
                 table_items.push(item);
-
-                if let Some(meta) = metadata {
-                    table_metadata.insert(meta.handle.clone(), meta);
-                    transaction_version_to_struct_count
-                        .entry(txn_version)
-                        .and_modify(|e| *e += 1);
-                }
             },
         }
     }
-
-    let mut table_metadata = table_metadata.into_values().collect::<Vec<TableMetadata>>();
-    // Sort by PK
-    table_metadata.sort_by(|a, b| a.handle.cmp(&b.handle));
 
     (
         (
@@ -315,7 +271,6 @@ pub fn process_transactions(
             txns,
             table_items,
             move_modules,
-            table_metadata,
         ),
         transaction_version_to_struct_count,
     )

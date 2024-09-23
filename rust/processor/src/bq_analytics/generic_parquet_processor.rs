@@ -131,6 +131,20 @@ where
     ) -> Result<()> {
         let parquet_structs = changes.data;
         let processor_name = self.processor_name.clone();
+
+        if self.last_upload_time.elapsed() >= self.upload_interval {
+            info!(
+                "Time has elapsed more than {} since last upload for {}",
+                self.upload_interval.as_secs(),
+                ParquetType::TABLE_NAME
+            );
+            if let Err(e) = self.upload_buffer(gcs_client).await {
+                error!("Failed to upload buffer: {}", e);
+                return Err(e);
+            }
+            self.last_upload_time = Instant::now();
+        }
+
         for parquet_struct in parquet_structs {
             let size_of_struct = allocative::size_of_unique(&parquet_struct);
             PARQUET_STRUCT_SIZE
@@ -154,19 +168,6 @@ where
             }
         }
 
-        if self.last_upload_time.elapsed() >= self.upload_interval {
-            info!(
-                "Time has elapsed more than {} since last upload for {}",
-                self.upload_interval.as_secs(),
-                ParquetType::TABLE_NAME
-            );
-            if let Err(e) = self.upload_buffer(gcs_client).await {
-                error!("Failed to upload buffer: {}", e);
-                return Err(e);
-            }
-            self.last_upload_time = Instant::now();
-        }
-
         PARQUET_HANDLER_CURRENT_BUFFER_SIZE
             .with_label_values(&[&self.processor_name, ParquetType::TABLE_NAME])
             .set(self.buffer_size_bytes as i64);
@@ -178,6 +179,23 @@ where
         // This is to cover the case when interval duration has passed but buffer is empty
         if self.buffer.is_empty() {
             debug!("Buffer is empty, skipping upload.");
+
+            let parquet_processing_result = ParquetProcessingResult {
+                start_version: -1, // this is to indicate that nothing was actually uploaded
+                end_version: -1,
+                last_transaction_timestamp: None,
+                txn_version_to_struct_count: None,
+                parquet_processed_structs: None,
+                table_name: ParquetType::TABLE_NAME.to_string(),
+            };
+
+            self.gap_detector_sender
+                .send(ProcessingResult::ParquetProcessingResult(
+                    parquet_processing_result,
+                ))
+                .await
+                .expect("[Parser] Failed to send versions to gap detector");
+
             return Ok(());
         }
         let start_version = self
@@ -235,7 +253,12 @@ where
             parquet_processed_structs: Some(parquet_processed_transactions),
             table_name: ParquetType::TABLE_NAME.to_string(),
         };
-
+        info!(
+            table_name = ParquetType::TABLE_NAME,
+            start_version = start_version,
+            end_version = end_version,
+            "Uploaded parquet to GCS and sending result to gap detector."
+        );
         self.gap_detector_sender
             .send(ProcessingResult::ParquetProcessingResult(
                 parquet_processing_result,

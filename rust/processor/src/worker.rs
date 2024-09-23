@@ -19,8 +19,12 @@ use crate::{
         nft_metadata_processor::NftMetadataProcessor,
         objects_processor::ObjectsProcessor,
         parquet_processors::{
+            parquet_ans_processor::ParquetAnsProcessor,
             parquet_default_processor::ParquetDefaultProcessor,
+            parquet_events_processor::ParquetEventsProcessor,
             parquet_fungible_asset_processor::ParquetFungibleAssetProcessor,
+            parquet_token_v2_processor::ParquetTokenV2Processor,
+            parquet_transaction_metadata_processor::ParquetTransactionMetadataProcessor,
         },
         stake_processor::StakeProcessor,
         token_v2_processor::TokenV2Processor,
@@ -58,7 +62,6 @@ use std::{
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 use url::Url;
-
 // this is how large the fetch queue should be. Each bucket should have a max of 80MB or so, so a batch
 // of 50 means that we could potentially have at least 4.8GB of data in memory at any given time and that we should provision
 // machines accordingly.
@@ -80,6 +83,7 @@ bitflags! {
         const FUNGIBLE_ASSET_BALANCES = 1 << 6;
         const CURRENT_FUNGIBLE_ASSET_BALANCES = 1 << 7;
         const COIN_SUPPLY = 1 << 8;
+        const CURRENT_UNIFIED_FUNGIBLE_ASSET_BALANCES = 1 << 24;
 
         // Objects
         const OBJECTS = 1 << 9;
@@ -558,7 +562,7 @@ impl Worker {
 
                                 let num_processed = (last_txn_version - first_txn_version) + 1;
 
-                                debug!(
+                                info!(
                                     processor_name = processor_name,
                                     service_type = PROCESSOR_SERVICE_TYPE,
                                     first_txn_version,
@@ -586,7 +590,7 @@ impl Worker {
                                 // TODO: For these three, do an atomic thing, or ideally move to an async metrics collector!
                                 GRPC_LATENCY_BY_PROCESSOR_IN_SECS
                                     .with_label_values(&[processor_name, &task_index_str])
-                                    .set(time_diff_since_pb_timestamp_in_secs(
+                                    .observe(time_diff_since_pb_timestamp_in_secs(
                                         end_txn_timestamp.as_ref().unwrap(),
                                     ));
                                 LATEST_PROCESSED_VERSION
@@ -626,13 +630,13 @@ impl Worker {
 
                                 SINGLE_BATCH_PROCESSING_TIME_IN_SECS
                                     .with_label_values(&[processor_name, &task_index_str])
-                                    .set(processing_time);
+                                    .observe(processing_time);
                                 SINGLE_BATCH_PARSING_TIME_IN_SECS
                                     .with_label_values(&[processor_name, &task_index_str])
-                                    .set(processing_result.processing_duration_in_secs);
+                                    .observe(processing_result.processing_duration_in_secs);
                                 SINGLE_BATCH_DB_INSERTION_TIME_IN_SECS
                                     .with_label_values(&[processor_name, &task_index_str])
-                                    .set(processing_result.db_insertion_duration_in_secs);
+                                    .observe(processing_result.db_insertion_duration_in_secs);
 
                                 gap_detector_sender
                                     .send(ProcessingResult::DefaultProcessingResult(
@@ -883,6 +887,21 @@ pub async fn do_processor(
     processed_result
 }
 
+pub fn build_processor_for_testing(
+    processor_config: ProcessorConfig,
+    db_pool: ArcDbPool,
+) -> Processor {
+    let per_table_chunk_sizes = AHashMap::new();
+    let deprecated_tables = TableFlags::empty();
+    build_processor(
+        &processor_config,
+        per_table_chunk_sizes,
+        deprecated_tables,
+        db_pool,
+        None,
+    )
+}
+
 /// Given a config and a db pool, build a concrete instance of a processor.
 // As time goes on there might be other things that we need to provide to certain
 // processors. As that happens we can revist whether this function (which tends to
@@ -959,5 +978,31 @@ pub fn build_processor(
                 gap_detector_sender.expect("Parquet processor requires a gap detector sender"),
             ))
         },
+        ProcessorConfig::ParquetTransactionMetadataProcessor(config) => {
+            Processor::from(ParquetTransactionMetadataProcessor::new(
+                db_pool,
+                config.clone(),
+                gap_detector_sender.expect("Parquet processor requires a gap detector sender"),
+            ))
+        },
+        ProcessorConfig::ParquetTokenV2Processor(config) => {
+            Processor::from(ParquetTokenV2Processor::new(
+                db_pool,
+                config.clone(),
+                gap_detector_sender.expect("Parquet processor requires a gap detector sender"),
+            ))
+        },
+        ProcessorConfig::ParquetEventsProcessor(config) => {
+            Processor::from(ParquetEventsProcessor::new(
+                db_pool,
+                config.clone(),
+                gap_detector_sender.expect("Parquet processor requires a gap detector sender"),
+            ))
+        },
+        ProcessorConfig::ParquetAnsProcessor(config) => Processor::from(ParquetAnsProcessor::new(
+            db_pool,
+            config.clone(),
+            gap_detector_sender.expect("Parquet processor requires a gap detector sender"),
+        )),
     }
 }

@@ -15,7 +15,7 @@ use crate::{
         token_v2_models::v2_token_utils::{TokenStandard, V2_STANDARD},
     },
     schema::{
-        current_fungible_asset_balances, current_unified_fungible_asset_balances_to_be_renamed,
+        current_fungible_asset_balances, current_fungible_asset_balances_legacy,
         fungible_asset_balances,
     },
     utils::util::{
@@ -53,7 +53,7 @@ pub struct FungibleAssetBalance {
 
 #[derive(Clone, Debug, Deserialize, FieldCount, Identifiable, Insertable, Serialize)]
 #[diesel(primary_key(storage_id))]
-#[diesel(table_name = current_fungible_asset_balances)]
+#[diesel(table_name = current_fungible_asset_balances_legacy)]
 pub struct CurrentFungibleAssetBalance {
     pub storage_id: String,
     pub owner_address: String,
@@ -66,9 +66,11 @@ pub struct CurrentFungibleAssetBalance {
     pub token_standard: String,
 }
 
+/// Note that this used to be called current_unified_fungible_asset_balances_to_be_renamed
+/// and was renamed to current_fungible_asset_balances to facilitate migration
 #[derive(Clone, Debug, Deserialize, FieldCount, Identifiable, Insertable, Serialize, Default)]
 #[diesel(primary_key(storage_id))]
-#[diesel(table_name = current_unified_fungible_asset_balances_to_be_renamed)]
+#[diesel(table_name = current_fungible_asset_balances)]
 #[diesel(treat_none_as_null = true)]
 pub struct CurrentUnifiedFungibleAssetBalance {
     pub storage_id: String,
@@ -76,7 +78,7 @@ pub struct CurrentUnifiedFungibleAssetBalance {
     // metadata address for (paired) Fungible Asset
     pub asset_type_v1: Option<String>,
     pub asset_type_v2: Option<String>,
-    pub is_primary: Option<bool>,
+    pub is_primary: bool,
     pub is_frozen: bool,
     pub amount_v1: Option<BigDecimal>,
     pub amount_v2: Option<BigDecimal>,
@@ -115,7 +117,7 @@ impl From<&CurrentFungibleAssetBalance> for CurrentUnifiedFungibleAssetBalance {
                 owner_address: cfab.owner_address.clone(),
                 asset_type_v2: Some(cfab.asset_type.clone()),
                 asset_type_v1: None,
-                is_primary: Some(cfab.is_primary),
+                is_primary: cfab.is_primary,
                 is_frozen: cfab.is_frozen,
                 amount_v1: None,
                 amount_v2: Some(cfab.amount.clone()),
@@ -133,7 +135,7 @@ impl From<&CurrentFungibleAssetBalance> for CurrentUnifiedFungibleAssetBalance {
                 owner_address: cfab.owner_address.clone(),
                 asset_type_v2: None,
                 asset_type_v1: Some(cfab.asset_type.clone()),
-                is_primary: None,
+                is_primary: true,
                 is_frozen: cfab.is_frozen,
                 amount_v1: Some(cfab.amount.clone()),
                 amount_v2: None,
@@ -148,7 +150,7 @@ impl From<&CurrentFungibleAssetBalance> for CurrentUnifiedFungibleAssetBalance {
 
 impl FungibleAssetBalance {
     /// Basically just need to index FA Store, but we'll need to look up FA metadata
-    pub async fn get_v2_from_write_resource(
+    pub fn get_v2_from_write_resource(
         write_resource: &WriteResource,
         write_set_change_index: i64,
         txn_version: i64,
@@ -218,6 +220,7 @@ impl FungibleAssetBalance {
                 &delete_resource.r#type.as_ref().unwrap().generic_type_params[0],
                 delete_resource.type_str.as_ref(),
                 txn_version,
+                write_set_change_index,
             );
             if let Some(coin_type) = coin_info_type.get_coin_type_below_max() {
                 let owner_address = standardize_address(delete_resource.address.as_str());
@@ -271,6 +274,7 @@ impl FungibleAssetBalance {
                 &write_resource.r#type.as_ref().unwrap().generic_type_params[0],
                 write_resource.type_str.as_ref(),
                 txn_version,
+                write_set_change_index,
             );
             if let Some(coin_type) = coin_info_type.get_coin_type_below_max() {
                 let owner_address = standardize_address(write_resource.address.as_str());

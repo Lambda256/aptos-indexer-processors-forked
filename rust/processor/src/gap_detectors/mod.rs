@@ -125,17 +125,18 @@ pub async fn create_gap_detector_status_tracker_loop(
                 }
             },
             Ok(ProcessingResult::ParquetProcessingResult(result)) => {
-                tracing::info!(
-                    processor_name,
-                    service_type = PROCESSOR_SERVICE_TYPE,
-                    "[ParquetGapDetector] received parquet gap detector task",
-                );
                 match gap_detector
                     .process_versions(ProcessingResult::ParquetProcessingResult(result))
                 {
                     Ok(res) => {
                         match res {
                             GapDetectorResult::ParquetFileGapDetectorResult(res) => {
+                                if res.last_transaction_timestamp.is_none() {
+                                    // we don't want to update the last processed version if we haven't processed anything
+                                    tracing::info!("No transactions processed, skipping update the processor status");
+                                    continue;
+                                }
+
                                 PARQUET_PROCESSOR_DATA_GAP_COUNT
                                     .with_label_values(&[processor_name])
                                     .set(res.num_gaps as i64);
@@ -143,7 +144,7 @@ pub async fn create_gap_detector_status_tracker_loop(
                                 if res.num_gaps >= gap_detection_batch_size {
                                     tracing::warn!(
                                         processor_name,
-                                        gap_start_version = res.next_version_to_process,
+                                        gap_start_version = res.last_success_version,
                                         num_gaps = res.num_gaps,
                                         "[Parser] Processed batches with a gap",
                                     );
@@ -154,12 +155,13 @@ pub async fn create_gap_detector_status_tracker_loop(
                                     >= UPDATE_PROCESSOR_STATUS_SECS
                                 {
                                     tracing::info!(
-                                        last_processed_version = res.next_version_to_process,
+                                        last_processed_version = res.last_success_version,
+                                        processor_name,
                                         "Updating last processed version"
                                     );
                                     processor
                                         .update_last_processed_version(
-                                            res.next_version_to_process,
+                                            res.last_success_version,
                                             res.last_transaction_timestamp,
                                         )
                                         .await

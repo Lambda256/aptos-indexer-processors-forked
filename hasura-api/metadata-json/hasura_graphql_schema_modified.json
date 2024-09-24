@@ -1,5 +1,5 @@
 {
-  "resource_version": 15,
+  "resource_version": 38,
   "metadata": {
     "version": 3,
     "sources": [
@@ -1358,6 +1358,57 @@
             "configuration": {
               "column_config": {},
               "custom_column_names": {},
+              "custom_name": "current_fungible_asset_balances_new",
+              "custom_root_fields": {}
+            },
+            "object_relationships": [
+              {
+                "name": "metadata",
+                "using": {
+                  "manual_configuration": {
+                    "column_mapping": {
+                      "asset_type": "asset_type"
+                    },
+                    "insertion_order": null,
+                    "remote_table": {
+                      "name": "fungible_asset_metadata",
+                      "schema": "public"
+                    }
+                  }
+                }
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "anonymous",
+                "permission": {
+                  "columns": [
+                    "amount",
+                    "asset_type",
+                    "is_frozen",
+                    "is_primary",
+                    "last_transaction_timestamp",
+                    "last_transaction_version",
+                    "owner_address",
+                    "storage_id",
+                    "token_standard"
+                  ],
+                  "filter": {},
+                  "limit": 100,
+                  "allow_aggregations": true
+                },
+                "comment": ""
+              }
+            ]
+          },
+          {
+            "table": {
+              "name": "current_fungible_asset_balances_legacy",
+              "schema": "public"
+            },
+            "configuration": {
+              "column_config": {},
+              "custom_column_names": {},
               "custom_name": "current_fungible_asset_balances",
               "custom_root_fields": {}
             },
@@ -1398,6 +1449,49 @@
                   "allow_aggregations": true
                 },
                 "comment": ""
+              }
+            ]
+          },
+          {
+            "table": {
+              "name": "fungible_asset_balances",
+              "schema": "public"
+            },
+            "object_relationships": [
+              {
+                "name": "metadata",
+                "using": {
+                  "manual_configuration": {
+                    "column_mapping": {
+                      "asset_type": "asset_type"
+                    },
+                    "insertion_order": null,
+                    "remote_table": {
+                      "name": "fungible_asset_metadata",
+                      "schema": "public"
+                    }
+                  }
+                }
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "anonymous",
+                "permission": {
+                  "columns": [
+                    "amount",
+                    "asset_type",
+                    "is_frozen",
+                    "is_primary",
+                    "transaction_timestamp",
+                    "transaction_version",
+                    "owner_address",
+                    "storage_id",
+                    "token_standard"
+                  ],
+                  "filter": {},
+                  "limit": 100
+                }
               }
             ]
           },
@@ -1533,6 +1627,21 @@
                     "insertion_order": null,
                     "remote_table": {
                       "name": "current_collections_v2",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "current_royalty_v1",
+                "using": {
+                  "manual_configuration": {
+                    "column_mapping": {
+                      "token_data_id": "token_data_id"
+                    },
+                    "insertion_order": null,
+                    "remote_table": {
+                      "name": "current_token_royalty_v1",
                       "schema": "public"
                     }
                   }
@@ -1755,6 +1864,30 @@
                   "filter": {},
                   "limit": 100
                 }
+              }
+            ]
+          },
+          {
+            "table": {
+              "name": "current_token_royalty_v1",
+              "schema": "public"
+            },
+            "select_permissions": [
+              {
+                "role": "anonymous",
+                "permission": {
+                  "columns": [
+                    "last_transaction_timestamp",
+                    "last_transaction_version",
+                    "payee_address",
+                    "royalty_points_denominator",
+                    "royalty_points_numerator",
+                    "token_data_id"
+                  ],
+                  "filter": {},
+                  "limit": 100
+                },
+                "comment": ""
               }
             ]
           },
@@ -1990,49 +2123,6 @@
           },
           {
             "table": {
-              "name": "fungible_asset_balances",
-              "schema": "public"
-            },
-            "object_relationships": [
-              {
-                "name": "metadata",
-                "using": {
-                  "manual_configuration": {
-                    "column_mapping": {
-                      "asset_type": "asset_type"
-                    },
-                    "insertion_order": null,
-                    "remote_table": {
-                      "name": "fungible_asset_metadata",
-                      "schema": "public"
-                    }
-                  }
-                }
-              }
-            ],
-            "select_permissions": [
-              {
-                "role": "anonymous",
-                "permission": {
-                  "columns": [
-                    "amount",
-                    "asset_type",
-                    "is_frozen",
-                    "is_primary",
-                    "transaction_timestamp",
-                    "transaction_version",
-                    "owner_address",
-                    "storage_id",
-                    "token_standard"
-                  ],
-                  "filter": {},
-                  "limit": 100
-                }
-              }
-            ]
-          },
-          {
-            "table": {
               "name": "fungible_asset_metadata",
               "schema": "public"
             },
@@ -2055,6 +2145,25 @@
                     "supply_v2",
                     "symbol",
                     "token_standard"
+                  ],
+                  "filter": {},
+                  "limit": 100
+                }
+              }
+            ]
+          },
+          {
+            "table": {
+              "name": "indexer_status",
+              "schema": "public"
+            },
+            "select_permissions": [
+              {
+                "role": "anonymous",
+                "permission": {
+                  "columns": [
+                    "db",
+                    "is_indexer_up"
                   ],
                   "filter": {},
                   "limit": 100
@@ -2335,14 +2444,14 @@
             "isolation_level": "read-committed",
             "pool_settings": {
               "connection_lifetime": 600,
-              "max_connections": 48
+              "max_connections": 100
             },
             "use_prepared_statements": false
           }
         }
       }
     ],
-     "api_limits": {
+    "api_limits": {
       "depth_limit": {
         "global": 5,
         "per_role": {}

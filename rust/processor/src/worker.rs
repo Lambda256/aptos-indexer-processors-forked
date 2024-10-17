@@ -115,7 +115,6 @@ bitflags! {
 }
 
 pub struct Worker {
-    pub network: String,
     pub producer: CustomProducerEnum,
     pub db_pool: ArcDbPool,
     pub processor_config: ProcessorConfig,
@@ -140,7 +139,6 @@ pub struct Worker {
 impl Worker {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
-        network: String,
         processor_config: ProcessorConfig,
         brokers: String,
         postgres_connection_string: String,
@@ -194,7 +192,6 @@ impl Worker {
         }
 
         Ok(Self {
-            network,
             producer,
             db_pool: conn_pool,
             processor_config,
@@ -344,7 +341,6 @@ impl Worker {
             &self.processor_config,
             self.per_table_chunk_sizes.clone(),
             self.deprecated_tables,
-            self.network.clone(),
             self.producer.clone(),
             self.db_pool.clone(),
             maybe_gap_detector_sender,
@@ -429,7 +425,6 @@ impl Worker {
                 &self.processor_config,
                 self.per_table_chunk_sizes.clone(),
                 self.deprecated_tables,
-                self.network.clone(),
                 self.producer.clone(),
                 self.db_pool.clone(),
                 Some(gap_detector_sender.clone()),
@@ -439,7 +434,6 @@ impl Worker {
                 &self.processor_config,
                 self.per_table_chunk_sizes.clone(),
                 self.deprecated_tables,
-                self.network.clone(),
                 self.producer.clone(),
                 self.db_pool.clone(),
                 None,
@@ -752,8 +746,8 @@ impl Worker {
                 AsyncConnectionWrapper::from(conn);
             run_pending_migrations(&mut conn);
         })
-        .await
-        .expect("[Parser] Failed to run migrations");
+            .await
+            .expect("[Parser] Failed to run migrations");
     }
 
     /// Gets the start version for the processor. If not found, start from 0.
@@ -910,7 +904,6 @@ pub async fn do_processor(
 
 pub fn build_processor_for_testing(
     processor_config: ProcessorConfig,
-    network: String,
     producer: CustomProducerEnum,
     db_pool: ArcDbPool,
 ) -> Processor {
@@ -920,7 +913,6 @@ pub fn build_processor_for_testing(
         &processor_config,
         per_table_chunk_sizes,
         deprecated_tables,
-        network,
         producer,
         db_pool,
         None,
@@ -936,14 +928,13 @@ pub fn build_processor(
     config: &ProcessorConfig,
     per_table_chunk_sizes: AHashMap<String, usize>,
     deprecated_tables: TableFlags,
-    network: String,
     processor: CustomProducerEnum,
     db_pool: ArcDbPool,
     gap_detector_sender: Option<AsyncSender<ProcessingResult>>, // Parquet only
 ) -> Processor {
     match config {
         ProcessorConfig::AccountTransactionsProcessor => Processor::from(
-            AccountTransactionsProcessor::new(network, processor, db_pool, per_table_chunk_sizes),
+            AccountTransactionsProcessor::new(processor, db_pool, per_table_chunk_sizes),
         ),
         ProcessorConfig::AnsProcessor(config) => Processor::from(AnsProcessor::new(
             db_pool,

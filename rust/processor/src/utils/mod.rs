@@ -4,5 +4,5 @@
 pub mod counters;
 pub mod database;
 pub mod mq;
-pub mod util;
 pub mod network;
+pub mod util;

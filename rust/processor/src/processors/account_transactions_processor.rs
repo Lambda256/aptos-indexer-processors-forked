@@ -19,7 +19,7 @@ use async_trait::async_trait;
 use diesel::{pg::Pg, query_builder::QueryFragment};
 use rayon::prelude::*;
 use std::fmt::Debug;
-use tracing::{info, error};
+use tracing::{error, info};
 
 pub struct AccountTransactionsProcessor {
     producer: CustomProducerEnum,
@@ -135,7 +135,10 @@ impl ProcessorTrait for AccountTransactionsProcessor {
 
         let network = Network::from_chain_id(_db_chain_id.unwrap_or(0));
         if network.is_none() {
-            bail!("Error getting network from chain id. Processor {}.", self.name())
+            bail!(
+                "Error getting network from chain id. Processor {}.",
+                self.name()
+            )
         }
         let topic_string = format!("aptos.{}.account.transactions", network.unwrap());
         info!(

@@ -746,8 +746,8 @@ impl Worker {
                 AsyncConnectionWrapper::from(conn);
             run_pending_migrations(&mut conn);
         })
-            .await
-            .expect("[Parser] Failed to run migrations");
+        .await
+        .expect("[Parser] Failed to run migrations");
     }
 
     /// Gets the start version for the processor. If not found, start from 0.

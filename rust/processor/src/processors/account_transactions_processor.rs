@@ -9,6 +9,7 @@ use crate::{
     utils::{
         database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool},
         mq::{CustomProducer, CustomProducerEnum},
+        network::Network,
     },
 };
 use ahash::AHashMap;
@@ -18,10 +19,9 @@ use async_trait::async_trait;
 use diesel::{pg::Pg, query_builder::QueryFragment};
 use rayon::prelude::*;
 use std::fmt::Debug;
-use tracing::error;
+use tracing::{info, error};
 
 pub struct AccountTransactionsProcessor {
-    network: String,
     producer: CustomProducerEnum,
     connection_pool: ArcDbPool,
     per_table_chunk_sizes: AHashMap<String, usize>,
@@ -29,13 +29,11 @@ pub struct AccountTransactionsProcessor {
 
 impl AccountTransactionsProcessor {
     pub fn new(
-        network: String,
         producer: CustomProducerEnum,
         connection_pool: ArcDbPool,
         per_table_chunk_sizes: AHashMap<String, usize>,
     ) -> Self {
         Self {
-            network,
             producer,
             connection_pool,
             per_table_chunk_sizes,
@@ -135,7 +133,16 @@ impl ProcessorTrait for AccountTransactionsProcessor {
         let processing_duration_in_secs = processing_start.elapsed().as_secs_f64();
         let db_insertion_start = std::time::Instant::now();
 
-        let topic_string = format!("aptos.{}.account.transactions", self.network);
+        let network = Network::from_chain_id(_db_chain_id.unwrap_or(0));
+        if network.is_none() {
+            bail!("Error getting network from chain id. Processor {}.", self.name())
+        }
+        let topic_string = format!("aptos.{}.account.transactions", network.unwrap());
+        info!(
+            processor_name = self.name(),
+            topic_string = &topic_string,
+            "Configured topic with correct network"
+        );
         let topic: &str = &topic_string;
         let mq_result = self
             .producer

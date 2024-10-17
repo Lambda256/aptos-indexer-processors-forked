@@ -20,8 +20,6 @@ mod diff_tests;
 mod models;
 mod scenarios_tests;
 
-const NETWORK: &str = "leonet";
-
 /// The test context struct holds the test name and the transaction batches.
 pub struct TestContext {
     pub transaction_batches: Vec<Transaction>,
@@ -118,7 +116,6 @@ impl TestContext {
         self.create_schema().await?;
         let processor = build_processor_for_testing(
             processor_config.config.clone(),
-            NETWORK.to_string(),
             producer.clone(),
             db_pool.clone(),
         );

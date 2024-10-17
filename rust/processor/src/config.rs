@@ -88,7 +88,6 @@ impl IndexerGrpcProcessorConfig {
 impl RunnableConfig for IndexerGrpcProcessorConfig {
     async fn run(&self) -> Result<()> {
         let mut worker = Worker::new(
-            self.network.clone(),
             self.processor_config.clone(),
             self.brokers.clone(),
             self.postgres_connection_string.clone(),

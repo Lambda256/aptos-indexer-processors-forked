@@ -18,7 +18,6 @@ pub const QUERY_DEFAULT_RETRY_DELAY_MS: u64 = 500;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct IndexerGrpcProcessorConfig {
-    pub network: String,
     pub processor_config: ProcessorConfig,
     pub postgres_connection_string: String,
     pub brokers: String,

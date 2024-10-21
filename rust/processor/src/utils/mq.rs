@@ -8,7 +8,7 @@ const DEFAULT_QUEUE_BUFFERING_MAX_MS: &str = "2000";
 
 pub trait CustomProducer {
     fn new(brokers: &str) -> Self;
-    async fn send_into_mq<'a, T>(&'a self, topic: &'a str, items: &'a [T]) -> Result<(), String>
+    async fn send_to_mq<'a, T>(&'a self, topic: &'a str, items: &'a [T]) -> Result<(), String>
     where
         T: serde::Serialize + 'a;
 }
@@ -28,13 +28,13 @@ impl CustomProducer for CustomProducerEnum {
         }
     }
 
-    async fn send_into_mq<'a, T>(&'a self, topic: &'a str, items: &'a [T]) -> Result<(), String>
+    async fn send_to_mq<'a, T>(&'a self, topic: &'a str, items: &'a [T]) -> Result<(), String>
     where
         T: serde::Serialize + 'a,
     {
         match self {
-            CustomProducerEnum::Kafka(p) => p.send_into_mq(topic, items).await,
-            CustomProducerEnum::Noop(p) => p.send_into_mq(topic, items).await,
+            CustomProducerEnum::Kafka(p) => p.send_to_mq(topic, items).await,
+            CustomProducerEnum::Noop(p) => p.send_to_mq(topic, items).await,
         }
     }
 }
@@ -57,7 +57,7 @@ impl CustomProducer for KafkaProducer {
         KafkaProducer { producer }
     }
 
-    async fn send_into_mq<'a, T>(&'a self, topic: &'a str, items: &'a [T]) -> Result<(), String>
+    async fn send_to_mq<'a, T>(&'a self, topic: &'a str, items: &'a [T]) -> Result<(), String>
     where
         T: serde::Serialize + 'a,
     {
@@ -93,7 +93,7 @@ impl CustomProducer for NoopProducer {
         NoopProducer
     }
 
-    async fn send_into_mq<'a, T>(&'a self, _topic: &'a str, _items: &'a [T]) -> Result<(), String>
+    async fn send_to_mq<'a, T>(&'a self, _topic: &'a str, _items: &'a [T]) -> Result<(), String>
     where
         T: serde::Serialize + 'a,
     {

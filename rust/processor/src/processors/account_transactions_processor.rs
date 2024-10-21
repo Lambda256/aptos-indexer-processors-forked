@@ -140,6 +140,7 @@ impl ProcessorTrait for AccountTransactionsProcessor {
                 self.name()
             )
         }
+
         let topic_string = format!("aptos.{}.account.transactions", network.unwrap());
         info!(
             processor_name = self.name(),
@@ -147,10 +148,7 @@ impl ProcessorTrait for AccountTransactionsProcessor {
             "Configured topic with correct network"
         );
         let topic: &str = &topic_string;
-        let mq_result = self
-            .producer
-            .send_into_mq(topic, &account_transactions)
-            .await;
+        let mq_result = self.producer.send_to_mq(topic, &account_transactions).await;
 
         // return error if sending to mq fails
         if mq_result.is_err() {

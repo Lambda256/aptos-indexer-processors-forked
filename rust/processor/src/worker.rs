@@ -49,6 +49,7 @@ use crate::{
         database::{
             execute_with_better_error_conn, new_db_pool, run_pending_migrations, ArcDbPool,
         },
+        mq::{CustomProducer, CustomProducerEnum},
         util::{time_diff_since_pb_timestamp_in_secs, timestamp_to_iso, timestamp_to_unixtime},
     },
 };
@@ -134,6 +135,7 @@ impl TableFlags {
 }
 
 pub struct Worker {
+    pub producer: CustomProducerEnum,
     pub db_pool: ArcDbPool,
     pub processor_config: ProcessorConfig,
     pub postgres_connection_string: String,
@@ -158,6 +160,7 @@ impl Worker {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         processor_config: ProcessorConfig,
+        brokers: String,
         postgres_connection_string: String,
         indexer_grpc_data_service_address: Url,
         grpc_http2_config: IndexerGrpcHttp2Config,
@@ -192,6 +195,13 @@ impl Worker {
             service_type = PROCESSOR_SERVICE_TYPE,
             "[Parser] Finish creating the connection pool"
         );
+        let producer = CustomProducerEnum::new(brokers.as_str());
+        info!(
+            processor_name = processor_name,
+            service_type = PROCESSOR_SERVICE_TYPE,
+            "[Parser] Finish creating the producer"
+        );
+
         let number_concurrent_processing_tasks = number_concurrent_processing_tasks.unwrap_or(10);
 
         let mut deprecated_tables_flags = TableFlags::empty();
@@ -202,6 +212,7 @@ impl Worker {
         }
 
         Ok(Self {
+            producer,
             db_pool: conn_pool,
             processor_config,
             postgres_connection_string,
@@ -350,6 +361,7 @@ impl Worker {
             &self.processor_config,
             self.per_table_chunk_sizes.clone(),
             self.deprecated_tables,
+            self.producer.clone(),
             self.db_pool.clone(),
             maybe_gap_detector_sender,
         );
@@ -433,6 +445,7 @@ impl Worker {
                 &self.processor_config,
                 self.per_table_chunk_sizes.clone(),
                 self.deprecated_tables,
+                self.producer.clone(),
                 self.db_pool.clone(),
                 Some(gap_detector_sender.clone()),
             )
@@ -441,6 +454,7 @@ impl Worker {
                 &self.processor_config,
                 self.per_table_chunk_sizes.clone(),
                 self.deprecated_tables,
+                self.producer.clone(),
                 self.db_pool.clone(),
                 None,
             )
@@ -910,6 +924,7 @@ pub async fn do_processor(
 
 pub fn build_processor_for_testing(
     processor_config: ProcessorConfig,
+    producer: CustomProducerEnum,
     db_pool: ArcDbPool,
 ) -> Processor {
     let per_table_chunk_sizes = AHashMap::new();
@@ -918,6 +933,7 @@ pub fn build_processor_for_testing(
         &processor_config,
         per_table_chunk_sizes,
         deprecated_tables,
+        producer,
         db_pool,
         None,
     )
@@ -932,28 +948,34 @@ pub fn build_processor(
     config: &ProcessorConfig,
     per_table_chunk_sizes: AHashMap<String, usize>,
     deprecated_tables: TableFlags,
+    producer: CustomProducerEnum,
     db_pool: ArcDbPool,
     gap_detector_sender: Option<AsyncSender<ProcessingResult>>, // Parquet only
 ) -> Processor {
     match config {
         ProcessorConfig::AccountTransactionsProcessor => Processor::from(
-            AccountTransactionsProcessor::new(db_pool, per_table_chunk_sizes),
+            AccountTransactionsProcessor::new(producer, db_pool, per_table_chunk_sizes),
         ),
         ProcessorConfig::AnsProcessor(config) => Processor::from(AnsProcessor::new(
+            producer,
             db_pool,
             config.clone(),
             per_table_chunk_sizes,
             deprecated_tables,
         )),
         ProcessorConfig::DefaultProcessor => Processor::from(DefaultProcessor::new(
+            producer,
             db_pool,
             per_table_chunk_sizes,
             deprecated_tables,
         )),
-        ProcessorConfig::EventsProcessor => {
-            Processor::from(EventsProcessor::new(db_pool, per_table_chunk_sizes))
-        },
+        ProcessorConfig::EventsProcessor => Processor::from(EventsProcessor::new(
+            producer,
+            db_pool,
+            per_table_chunk_sizes,
+        )),
         ProcessorConfig::FungibleAssetProcessor => Processor::from(FungibleAssetProcessor::new(
+            producer,
             db_pool,
             per_table_chunk_sizes,
             deprecated_tables,
@@ -963,17 +985,20 @@ pub fn build_processor(
             Processor::from(NftMetadataProcessor::new(db_pool, config.clone()))
         },
         ProcessorConfig::ObjectsProcessor(config) => Processor::from(ObjectsProcessor::new(
+            producer,
             db_pool,
             config.clone(),
             per_table_chunk_sizes,
             deprecated_tables,
         )),
         ProcessorConfig::StakeProcessor(config) => Processor::from(StakeProcessor::new(
+            producer,
             db_pool,
             config.clone(),
             per_table_chunk_sizes,
         )),
         ProcessorConfig::TokenV2Processor(config) => Processor::from(TokenV2Processor::new(
+            producer,
             db_pool,
             config.clone(),
             per_table_chunk_sizes,
@@ -982,9 +1007,14 @@ pub fn build_processor(
         ProcessorConfig::TransactionMetadataProcessor => Processor::from(
             TransactionMetadataProcessor::new(db_pool, per_table_chunk_sizes),
         ),
-        ProcessorConfig::UserTransactionProcessor => Processor::from(
-            UserTransactionProcessor::new(db_pool, per_table_chunk_sizes, deprecated_tables),
-        ),
+        ProcessorConfig::UserTransactionProcessor => {
+            Processor::from(UserTransactionProcessor::new(
+                producer,
+                db_pool,
+                per_table_chunk_sizes,
+                deprecated_tables,
+            ))
+        },
         ProcessorConfig::ParquetDefaultProcessor(config) => {
             Processor::from(ParquetDefaultProcessor::new(
                 db_pool,

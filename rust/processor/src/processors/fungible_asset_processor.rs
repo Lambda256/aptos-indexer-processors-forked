@@ -22,9 +22,7 @@ use crate::{
     gap_detectors::ProcessingResult,
     schema,
     utils::{
-        counters::PROCESSOR_UNKNOWN_TYPE_COUNT,
-        database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool},
-        util::{get_entry_function_from_user_request, standardize_address},
+        counters::PROCESSOR_UNKNOWN_TYPE_COUNT, database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool}, mq::{CustomProducer, CustomProducerEnum}, network::Network, util::{get_entry_function_from_user_request, standardize_address}
     },
     worker::TableFlags,
 };
@@ -43,6 +41,7 @@ use std::fmt::Debug;
 use tracing::error;
 
 pub struct FungibleAssetProcessor {
+    producer: CustomProducerEnum,
     connection_pool: ArcDbPool,
     per_table_chunk_sizes: AHashMap<String, usize>,
     deprecated_tables: TableFlags,
@@ -50,11 +49,13 @@ pub struct FungibleAssetProcessor {
 
 impl FungibleAssetProcessor {
     pub fn new(
+        producer: CustomProducerEnum,
         connection_pool: ArcDbPool,
         per_table_chunk_sizes: AHashMap<String, usize>,
         deprecated_tables: TableFlags,
     ) -> Self {
         Self {
+            producer,
             connection_pool,
             per_table_chunk_sizes,
             deprecated_tables,
@@ -71,6 +72,39 @@ impl Debug for FungibleAssetProcessor {
             state.connections, state.idle_connections
         )
     }
+}
+
+async fn produce_to_mq(
+    producer: &CustomProducerEnum,
+    name: &'static str,
+    start_version: u64,
+    end_version: u64,
+    network: String,
+    fungible_asset_activities: &[FungibleAssetActivity],
+    fungible_asset_metadata: &[FungibleAssetMetadataModel],
+    fungible_asset_balances: &[FungibleAssetBalance],
+) -> Result<(), String> {
+    tracing::trace!(
+        name = name,
+        start_version = start_version,
+        end_version = end_version,
+        "Producing to mq",
+    );
+
+    let faa_topic = format!("aptos.{}.fungible.asset.activities", network);
+    let fam_topic = format!("aptos.{}.fungible.asset.metadata", network);
+    let fab_topic = format!("aptos.{}.fungible.asset.balances", network);
+    let (faa_res, fam_res, fab_res) = tokio::join!(
+        producer.send_to_mq(faa_topic.as_str(), fungible_asset_activities),
+        producer.send_to_mq(fam_topic.as_str(), fungible_asset_metadata),
+        producer.send_to_mq(fab_topic.as_str(), fungible_asset_balances)
+    );
+
+    for res in [faa_res, fam_res, fab_res] {
+        res?;
+    }
+
+    Ok(())
 }
 
 async fn insert_to_db(
@@ -351,7 +385,7 @@ impl ProcessorTrait for FungibleAssetProcessor {
         transactions: Vec<Transaction>,
         start_version: u64,
         end_version: u64,
-        _: Option<u64>,
+        _db_chain_id: Option<u64>,
     ) -> anyhow::Result<ProcessingResult> {
         let processing_start = std::time::Instant::now();
         let last_transaction_timestamp = transactions.last().unwrap().timestamp.clone();
@@ -400,6 +434,36 @@ impl ProcessorTrait for FungibleAssetProcessor {
 
         if self.deprecated_tables.contains(TableFlags::COIN_SUPPLY) {
             coin_supply.clear();
+        }
+
+        let network = Network::from_chain_id(_db_chain_id.unwrap_or(0));
+        if network.is_none() {
+            bail!(
+                "Error getting network from chain id. Processor {}.",
+                self.name()
+            )
+        }
+
+        let mq_result = produce_to_mq(
+            &self.producer,
+            self.name(),
+            start_version,
+            end_version,
+            network.unwrap().to_string(),
+            &fungible_asset_activities,
+            &fungible_asset_metadata,
+            &fungible_asset_balances,
+        )
+        .await;
+
+        if mq_result.is_err() {
+            bail!(
+                "Error sending fungible asset transactions to mq. Processor {}. Start {}. End {}. Error {:?}",
+                self.name(),
+                start_version,
+                end_version,
+                mq_result.err()
+            )
         }
 
         let tx_result = insert_to_db(

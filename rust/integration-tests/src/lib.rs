@@ -3,7 +3,10 @@ use aptos_protos::transaction::v1::Transaction;
 use diesel::{pg::PgConnection, sql_query, Connection, RunQueryDsl};
 use processor::{
     processors::{ProcessorConfig, ProcessorTrait},
-    utils::database::{new_db_pool, run_pending_migrations},
+    utils::{
+        database::{new_db_pool, run_pending_migrations},
+        mq::{CustomProducer, CustomProducerEnum},
+    },
     worker::build_processor_for_testing,
 };
 use testcontainers::{
@@ -115,10 +118,14 @@ impl TestContext {
         let mut conn = PgConnection::establish(&db_url)
             .with_context(|| format!("Error connecting to {}", db_url))?;
         let db_pool = new_db_pool(&db_url, None).await.unwrap();
+        let producer = CustomProducerEnum::new("");
 
         self.create_schema().await?;
-        let processor =
-            build_processor_for_testing(processor_config.config.clone(), db_pool.clone());
+        let processor = build_processor_for_testing(
+            processor_config.config.clone(),
+            producer.clone(),
+            db_pool.clone(),
+        );
 
         let mut last_version = None;
 

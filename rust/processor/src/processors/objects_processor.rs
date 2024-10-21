@@ -16,8 +16,7 @@ use crate::{
     gap_detectors::ProcessingResult,
     schema,
     utils::{
-        database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool},
-        util::standardize_address,
+        database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool}, mq::{CustomProducer, CustomProducerEnum}, network::Network, util::standardize_address
     },
     worker::TableFlags,
     IndexerGrpcProcessorConfig,
@@ -44,6 +43,7 @@ pub struct ObjectsProcessorConfig {
     pub query_retry_delay_ms: u64,
 }
 pub struct ObjectsProcessor {
+    producer: CustomProducerEnum,
     connection_pool: ArcDbPool,
     config: ObjectsProcessorConfig,
     per_table_chunk_sizes: AHashMap<String, usize>,
@@ -52,12 +52,14 @@ pub struct ObjectsProcessor {
 
 impl ObjectsProcessor {
     pub fn new(
+        producer: CustomProducerEnum,
         connection_pool: ArcDbPool,
         config: ObjectsProcessorConfig,
         per_table_chunk_sizes: AHashMap<String, usize>,
         deprecated_tables: TableFlags,
     ) -> Self {
         Self {
+            producer,
             connection_pool,
             config,
             per_table_chunk_sizes,
@@ -75,6 +77,25 @@ impl Debug for ObjectsProcessor {
             state.connections, state.idle_connections
         )
     }
+}
+
+async fn produce_to_mq(
+    producer: &CustomProducerEnum,
+    name: &'static str,
+    start_version: u64,
+    end_version: u64,
+    network: String,
+    objects: &[Object],
+) -> Result<(), String> {
+    tracing::trace!(
+        name = name,
+        start_version = start_version,
+        end_version = end_version,
+        "Producing to mq",
+    );
+
+    let objects_topic = format!("aptos.{}.objects", network);
+    producer.send_to_mq(objects_topic.as_str(), objects).await
 }
 
 async fn insert_to_db(
@@ -168,7 +189,7 @@ impl ProcessorTrait for ObjectsProcessor {
         transactions: Vec<Transaction>,
         start_version: u64,
         end_version: u64,
-        _: Option<u64>,
+        _db_chain_id: Option<u64>,
     ) -> anyhow::Result<ProcessingResult> {
         let processing_start: std::time::Instant = std::time::Instant::now();
         let last_transaction_timestamp = transactions.last().unwrap().timestamp.clone();
@@ -204,24 +225,27 @@ impl ProcessorTrait for ObjectsProcessor {
                         ObjectWithMetadata::from_write_resource(wr).unwrap()
                     {
                         // Object core is the first struct that we need to get
-                        object_metadata_helper.insert(address.clone(), ObjectAggregatedData {
-                            object: object_with_metadata,
-                            token: None,
-                            fungible_asset_store: None,
-                            // The following structs are unused in this processor
-                            fungible_asset_metadata: None,
-                            aptos_collection: None,
-                            fixed_supply: None,
-                            unlimited_supply: None,
-                            concurrent_supply: None,
-                            property_map: None,
-                            transfer_events: vec![],
-                            untransferable: None,
-                            fungible_asset_supply: None,
-                            concurrent_fungible_asset_supply: None,
-                            concurrent_fungible_asset_balance: None,
-                            token_identifier: None,
-                        });
+                        object_metadata_helper.insert(
+                            address.clone(),
+                            ObjectAggregatedData {
+                                object: object_with_metadata,
+                                token: None,
+                                fungible_asset_store: None,
+                                // The following structs are unused in this processor
+                                fungible_asset_metadata: None,
+                                aptos_collection: None,
+                                fixed_supply: None,
+                                unlimited_supply: None,
+                                concurrent_supply: None,
+                                property_map: None,
+                                transfer_events: vec![],
+                                untransferable: None,
+                                fungible_asset_supply: None,
+                                concurrent_fungible_asset_supply: None,
+                                concurrent_fungible_asset_balance: None,
+                                token_identifier: None,
+                            },
+                        );
                     }
                 }
             }
@@ -295,6 +319,33 @@ impl ProcessorTrait for ObjectsProcessor {
 
         let processing_duration_in_secs = processing_start.elapsed().as_secs_f64();
         let db_insertion_start = std::time::Instant::now();
+
+        let network = Network::from_chain_id(_db_chain_id.unwrap_or(0));
+        if network.is_none() {
+            bail!(
+                "Error getting network from chain id. Processor {}.",
+                self.name()
+            )
+        }
+
+        let mq_result = produce_to_mq(
+            &self.producer,
+            self.name(),
+            start_version,
+            end_version,
+            network.unwrap().to_string(),
+            &all_objects,
+        ).await;
+
+        if mq_result.is_err() {
+            bail!(
+                "Error sending object to mq. Processor {}. Start {}. End {}. Error {:?}",
+                self.name(),
+                start_version,
+                end_version,
+                mq_result.err()
+            )
+        }
 
         let tx_result = insert_to_db(
             self.get_pool(),

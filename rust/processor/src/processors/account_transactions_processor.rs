@@ -6,7 +6,11 @@ use crate::{
     db::postgres::models::account_transaction_models::account_transactions::AccountTransaction,
     gap_detectors::ProcessingResult,
     schema,
-    utils::database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool},
+    utils::{
+        database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool},
+        mq::{CustomProducer, CustomProducerEnum},
+        network::Network,
+    },
 };
 use ahash::AHashMap;
 use anyhow::bail;
@@ -15,16 +19,22 @@ use async_trait::async_trait;
 use diesel::{pg::Pg, query_builder::QueryFragment};
 use rayon::prelude::*;
 use std::fmt::Debug;
-use tracing::error;
+use tracing::{error, info};
 
 pub struct AccountTransactionsProcessor {
+    producer: CustomProducerEnum,
     connection_pool: ArcDbPool,
     per_table_chunk_sizes: AHashMap<String, usize>,
 }
 
 impl AccountTransactionsProcessor {
-    pub fn new(connection_pool: ArcDbPool, per_table_chunk_sizes: AHashMap<String, usize>) -> Self {
+    pub fn new(
+        producer: CustomProducerEnum,
+        connection_pool: ArcDbPool,
+        per_table_chunk_sizes: AHashMap<String, usize>,
+    ) -> Self {
         Self {
+            producer,
             connection_pool,
             per_table_chunk_sizes,
         }
@@ -122,6 +132,29 @@ impl ProcessorTrait for AccountTransactionsProcessor {
 
         let processing_duration_in_secs = processing_start.elapsed().as_secs_f64();
         let db_insertion_start = std::time::Instant::now();
+
+        let network = Network::from_chain_id(_db_chain_id.unwrap_or(0));
+        if network.is_none() {
+            bail!(
+                "Error getting network from chain id. Processor {}.",
+                self.name()
+            )
+        }
+
+        let topic_string = format!("aptos.{}.account.transactions", network.unwrap());
+        info!(
+            processor_name = self.name(),
+            topic_string = &topic_string,
+            "Configured topic with correct network"
+        );
+        let topic: &str = &topic_string;
+        let mq_result = self.producer.send_to_mq(topic, &account_transactions).await;
+
+        // return error if sending to mq fails
+        if mq_result.is_err() {
+            bail!("Error sending account transactions to mq. Processor {}. Start {}. End {}. Error {:?}", self.name(), start_version, end_version, mq_result.err())
+        }
+
         let tx_result = insert_to_db(
             self.get_pool(),
             self.name(),

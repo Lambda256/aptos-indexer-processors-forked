@@ -33,6 +33,8 @@ use crate::{
     utils::{
         counters::PROCESSOR_UNKNOWN_TYPE_COUNT,
         database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool, DbPoolConnection},
+        mq::{CustomProducer, CustomProducerEnum},
+        network::Network,
         util::{get_entry_function_from_user_request, parse_timestamp, standardize_address},
     },
     worker::TableFlags,
@@ -61,6 +63,7 @@ pub struct TokenV2ProcessorConfig {
 }
 
 pub struct TokenV2Processor {
+    producer: CustomProducerEnum,
     connection_pool: ArcDbPool,
     config: TokenV2ProcessorConfig,
     per_table_chunk_sizes: AHashMap<String, usize>,
@@ -69,12 +72,14 @@ pub struct TokenV2Processor {
 
 impl TokenV2Processor {
     pub fn new(
+        producer: CustomProducerEnum,
         connection_pool: ArcDbPool,
         config: TokenV2ProcessorConfig,
         per_table_chunk_sizes: AHashMap<String, usize>,
         deprecated_tables: TableFlags,
     ) -> Self {
         Self {
+            producer,
             connection_pool,
             config,
             per_table_chunk_sizes,
@@ -92,6 +97,53 @@ impl Debug for TokenV2Processor {
             state.connections, state.idle_connections
         )
     }
+}
+
+async fn produce_to_mq(
+    producer: &CustomProducerEnum,
+    name: &'static str,
+    start_version: u64,
+    end_version: u64,
+    network: String,
+    collections_v2: &[CollectionV2],
+    token_datas_v2: &[TokenDataV2],
+    token_ownerships_v2: &[TokenOwnershipV2],
+    token_activities_v2: &[TokenActivityV2],
+    current_token_v2_metadata: &[CurrentTokenV2Metadata],
+    current_token_royalties_v1: &[CurrentTokenRoyaltyV1],
+    current_token_claims: &[CurrentTokenPendingClaim],
+) -> Result<(), String> {
+    tracing::trace!(
+        name = name,
+        start_version = start_version,
+        end_version = end_version,
+        "Producing to mq",
+    );
+
+    let cv2_topic = format!("aptos.{}.collections.v2", network);
+    let tdv2_topic = format!("aptos.{}.token.datas.v2", network);
+    let tov2_topic = format!("aptos.{}.token.ownerships.v2", network);
+    let tav2_topic = format!("aptos.{}.token.activities.v2", network);
+    let ctv2m_topic = format!("aptos.{}.current.token.v2.metadata", network);
+    let ctrv1_topic = format!("aptos.{}.current.token.royalty.v1", network);
+    let ctc_topic = format!("aptos.{}.current.token.pending.claims", network);
+    let (cv2_res, tdv2_res, tov2_res, tav2_res, ctv2m_res, ctrv1_res, ctc_res) = tokio::join!(
+        producer.send_to_mq(cv2_topic.as_str(), collections_v2),
+        producer.send_to_mq(tdv2_topic.as_str(), token_datas_v2),
+        producer.send_to_mq(tov2_topic.as_str(), token_ownerships_v2),
+        producer.send_to_mq(tav2_topic.as_str(), token_activities_v2),
+        producer.send_to_mq(ctv2m_topic.as_str(), current_token_v2_metadata),
+        producer.send_to_mq(ctrv1_topic.as_str(), current_token_royalties_v1),
+        producer.send_to_mq(ctc_topic.as_str(), current_token_claims),
+    );
+
+    for res in vec![
+        cv2_res, tdv2_res, tov2_res, tav2_res, ctv2m_res, ctrv1_res, ctc_res,
+    ] {
+        res?;
+    }
+
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -586,7 +638,7 @@ impl ProcessorTrait for TokenV2Processor {
         transactions: Vec<Transaction>,
         start_version: u64,
         end_version: u64,
-        _: Option<u64>,
+        _db_chain_id: Option<u64>,
     ) -> anyhow::Result<ProcessingResult> {
         let processing_start = std::time::Instant::now();
         let last_transaction_timestamp = transactions.last().unwrap().timestamp.clone();
@@ -643,6 +695,40 @@ impl ProcessorTrait for TokenV2Processor {
             .contains(TableFlags::CURRENT_TOKEN_V2_METADATA)
         {
             current_token_v2_metadata.clear();
+        }
+
+        let network = Network::from_chain_id(_db_chain_id.unwrap_or(0));
+        if network.is_none() {
+            bail!(
+                "Error getting network from chain id. Processor {}.",
+                self.name()
+            )
+        }
+
+        let mq_result = produce_to_mq(
+            &self.producer,
+            self.name(),
+            start_version,
+            end_version,
+            network.unwrap().to_string(),
+            &collections_v2,
+            &token_datas_v2,
+            &token_ownerships_v2,
+            &token_activities_v2,
+            &current_token_v2_metadata,
+            &current_token_royalties_v1,
+            &current_token_claims,
+        )
+        .await;
+
+        if mq_result.is_err() {
+            bail!(
+                "Error producing token_v2 to mq. Processor {}. Start {}. End {}. Error {:?}",
+                self.name(),
+                start_version,
+                end_version,
+                mq_result.err()
+            )
         }
 
         let tx_result = insert_to_db(

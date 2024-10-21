@@ -20,6 +20,8 @@ use crate::{
     schema,
     utils::{
         database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool, DbPoolConnection},
+        mq::{CustomProducer, CustomProducerEnum},
+        network::Network,
         util::{parse_timestamp, standardize_address},
     },
     IndexerGrpcProcessorConfig,
@@ -47,6 +49,7 @@ pub struct StakeProcessorConfig {
 }
 
 pub struct StakeProcessor {
+    producer: CustomProducerEnum,
     connection_pool: ArcDbPool,
     config: StakeProcessorConfig,
     per_table_chunk_sizes: AHashMap<String, usize>,
@@ -54,11 +57,13 @@ pub struct StakeProcessor {
 
 impl StakeProcessor {
     pub fn new(
+        producer: CustomProducerEnum,
         connection_pool: ArcDbPool,
         config: StakeProcessorConfig,
         per_table_chunk_sizes: AHashMap<String, usize>,
     ) -> Self {
         Self {
+            producer,
             connection_pool,
             config,
             per_table_chunk_sizes,
@@ -75,6 +80,48 @@ impl Debug for StakeProcessor {
             state.connections, state.idle_connections
         )
     }
+}
+
+async fn produce_to_mq(
+    producer: &CustomProducerEnum,
+    name: &'static str,
+    start_version: u64,
+    end_version: u64,
+    network: String,
+    current_stake_pool_voters: &[CurrentStakingPoolVoter],
+    proposal_votes: &[ProposalVote],
+    delegator_activities: &[DelegatedStakingActivity],
+    delegator_balances: &[DelegatorBalance],
+    delegator_pools: &[DelegatorPool],
+    delegator_pool_balances: &[DelegatorPoolBalance],
+) -> Result<(), String> {
+    tracing::trace!(
+        name = name,
+        start_version = start_version,
+        end_version = end_version,
+        "Producing to mq",
+    );
+
+    let ctpv_topic = format!("aptos.{}.current.staking.pool.voter", network);
+    let pv_topic = format!("aptos.{}.proposal.votes", network);
+    let da_topic = format!("aptos.{}.delegator.staking.activities", network);
+    let db_topic = format!("aptos.{}.delegator.balances", network);
+    let dp_topic = format!("aptos.{}.delegated.staking.pools", network);
+    let dpb_topic = format!("aptos.{}.delegated.staking.pool.balances", network);
+    let (ctpv_res, pv_res, da_res, db_res, dp_res, dpb_res) = tokio::join!(
+        producer.send_to_mq(ctpv_topic.as_str(), current_stake_pool_voters),
+        producer.send_to_mq(pv_topic.as_str(), proposal_votes),
+        producer.send_to_mq(da_topic.as_str(), delegator_activities),
+        producer.send_to_mq(db_topic.as_str(), delegator_balances),
+        producer.send_to_mq(dp_topic.as_str(), delegator_pools),
+        producer.send_to_mq(dpb_topic.as_str(), delegator_pool_balances)
+    );
+
+    for res in vec![ctpv_res, pv_res, da_res, db_res, dp_res, dpb_res] {
+        res?;
+    }
+
+    Ok(())
 }
 
 async fn insert_to_db(
@@ -180,7 +227,7 @@ async fn insert_to_db(
     );
 
     let (cspv_res, pv_res, da_res, db_res, cdb_res, dp_res, dpb_res, cdpb_res, cdv_res) =
-        futures::join!(cspv, pv, da, db, cdb, dp, dpb, cdpb, cdv);
+        tokio::join!(cspv, pv, da, db, cdb, dp, dpb, cdpb, cdv);
     for res in [
         cspv_res, pv_res, da_res, db_res, cdb_res, dp_res, dpb_res, cdpb_res, cdv_res,
     ] {
@@ -578,7 +625,7 @@ impl ProcessorTrait for StakeProcessor {
         transactions: Vec<Transaction>,
         start_version: u64,
         end_version: u64,
-        _: Option<u64>,
+        _db_chain_id: Option<u64>,
     ) -> anyhow::Result<ProcessingResult> {
         let processing_start = std::time::Instant::now();
         let last_transaction_timestamp = transactions.last().unwrap().timestamp.clone();
@@ -613,6 +660,39 @@ impl ProcessorTrait for StakeProcessor {
 
         let processing_duration_in_secs = processing_start.elapsed().as_secs_f64();
         let db_insertion_start = std::time::Instant::now();
+
+        let network = Network::from_chain_id(_db_chain_id.unwrap_or(0));
+        if network.is_none() {
+            bail!(
+                "Error getting network from chain id. Processor {}.",
+                self.name()
+            )
+        }
+
+        let mq_result = produce_to_mq(
+            &self.producer,
+            self.name(),
+            start_version,
+            end_version,
+            network.unwrap().to_string(),
+            &all_current_stake_pool_voters,
+            &all_proposal_votes,
+            &all_delegator_activities,
+            &all_delegator_balances,
+            &all_delegator_pools,
+            &all_delegator_pool_balances,
+        )
+        .await;
+
+        if mq_result.is_err() {
+            bail!(
+                "Error sending stake transactions to mq. Processor {}. Start {}. End {}. Error {:?}",
+                self.name(),
+                start_version,
+                end_version,
+                mq_result.err()
+            )
+        }
 
         let tx_result = insert_to_db(
             self.get_pool(),

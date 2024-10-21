@@ -70,6 +70,8 @@ tokio-postgres = { workspace = true }
 parquet = { workspace = true }
 parquet_derive = { workspace = true }
 
+rdkafka = "0.36.2"
+
 [target.'cfg(unix)'.dependencies]
 jemallocator = { workspace = true }
 

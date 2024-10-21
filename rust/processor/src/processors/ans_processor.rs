@@ -15,6 +15,8 @@ use crate::{
     utils::{
         counters::PROCESSOR_UNKNOWN_TYPE_COUNT,
         database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool},
+        mq::{CustomProducer, CustomProducerEnum},
+        network::Network,
         util::standardize_address,
     },
     worker::TableFlags,
@@ -43,6 +45,7 @@ pub struct AnsProcessorConfig {
 }
 
 pub struct AnsProcessor {
+    producer: CustomProducerEnum,
     connection_pool: ArcDbPool,
     config: AnsProcessorConfig,
     per_table_chunk_sizes: AHashMap<String, usize>,
@@ -51,6 +54,7 @@ pub struct AnsProcessor {
 
 impl AnsProcessor {
     pub fn new(
+        producer: CustomProducerEnum,
         connection_pool: ArcDbPool,
         config: AnsProcessorConfig,
         per_table_chunk_sizes: AHashMap<String, usize>,
@@ -63,6 +67,7 @@ impl AnsProcessor {
             "init AnsProcessor"
         );
         Self {
+            producer,
             connection_pool,
             config,
             per_table_chunk_sizes,
@@ -80,6 +85,36 @@ impl Debug for AnsProcessor {
             state.connections, state.idle_connections
         )
     }
+}
+
+async fn produce_to_mq(
+    producer: &CustomProducerEnum,
+    name: &'static str,
+    start_version: u64,
+    end_version: u64,
+    network: String,
+    ans_lookups_v2: &[AnsLookupV2],
+    ans_primary_names_v2: &[AnsPrimaryNameV2],
+) -> Result<(), String> {
+    tracing::trace!(
+        name = name,
+        start_version = start_version,
+        end_version = end_version,
+        "Producing to mq",
+    );
+
+    let al_v2_topic = format!("aptos.{}.ans.lookup.v2", network);
+    let apn_v2_topic = format!("aptos.{}.ans.primary_name.v2", network);
+    let (al_v2_res, apn_v2_res) = tokio::join!(
+        producer.send_to_mq(al_v2_topic.as_str(), ans_lookups_v2),
+        producer.send_to_mq(apn_v2_topic.as_str(), ans_primary_names_v2),
+    );
+
+    for res in vec![al_v2_res, apn_v2_res] {
+        res?;
+    }
+
+    Ok(())
 }
 
 async fn insert_to_db(
@@ -420,6 +455,36 @@ impl ProcessorTrait for AnsProcessor {
             .contains(TableFlags::CURRENT_ANS_PRIMARY_NAME)
         {
             all_current_ans_primary_names.clear();
+        }
+
+        let network = Network::from_chain_id(_db_chain_id.unwrap_or(0));
+        if network.is_none() {
+            bail!(
+                "Error getting network from chain id. Processor {}.",
+                self.name()
+            )
+        }
+
+        // Produce to MQ
+        let mq_result = produce_to_mq(
+            &self.producer,
+            self.name(),
+            start_version,
+            end_version,
+            network.unwrap().to_string(),
+            &all_ans_lookups_v2,
+            &all_ans_primary_names_v2,
+        )
+        .await;
+
+        if mq_result.is_err() {
+            bail!(
+                "Error sending ANS transactions to mq. Processor {}. Start {}. End {}. Error {:?}",
+                self.name(),
+                start_version,
+                end_version,
+                mq_result.err()
+            )
         }
 
         // Insert values to db

@@ -11,7 +11,11 @@ use crate::{
     },
     gap_detectors::ProcessingResult,
     schema,
-    utils::database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool},
+    utils::{
+        database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool},
+        mq::{CustomProducer, CustomProducerEnum},
+        network::Network,
+    },
     worker::TableFlags,
 };
 use ahash::AHashMap;
@@ -28,6 +32,7 @@ use tokio::join;
 use tracing::error;
 
 pub struct DefaultProcessor {
+    producer: CustomProducerEnum,
     connection_pool: ArcDbPool,
     per_table_chunk_sizes: AHashMap<String, usize>,
     deprecated_tables: TableFlags,
@@ -35,11 +40,13 @@ pub struct DefaultProcessor {
 
 impl DefaultProcessor {
     pub fn new(
+        producer: CustomProducerEnum,
         connection_pool: ArcDbPool,
         per_table_chunk_sizes: AHashMap<String, usize>,
         deprecated_tables: TableFlags,
     ) -> Self {
         Self {
+            producer,
             connection_pool,
             per_table_chunk_sizes,
             deprecated_tables,
@@ -56,6 +63,44 @@ impl Debug for DefaultProcessor {
             state.connections, state.idle_connections
         )
     }
+}
+
+async fn produce_to_mq(
+    producer: &CustomProducerEnum,
+    name: &'static str,
+    start_version: u64,
+    end_version: u64,
+    network: String,
+    block_metadata_transactions: &[BlockMetadataTransactionModel],
+    (table_items, current_table_items, table_metadata): (
+        &[TableItem],
+        &[CurrentTableItem],
+        &[TableMetadata],
+    ),
+) -> Result<(), String> {
+    tracing::trace!(
+        name = name,
+        start_version = start_version,
+        end_version = end_version,
+        "Producing to mq",
+    );
+
+    let bmt_topic = format!("aptos.{}.block.metadata.transactions", network);
+    let ti_topic = format!("aptos.{}.table.items", network);
+    let cti_topic = format!("aptos.{}.current.table.items", network);
+    let tm_topic = format!("aptos.{}.table.metadatas", network);
+    let (bmt_res, ti_res, cti_res, tm_res) = tokio::join!(
+        producer.send_to_mq(bmt_topic.as_str(), block_metadata_transactions),
+        producer.send_to_mq(ti_topic.as_str(), table_items),
+        producer.send_to_mq(cti_topic.as_str(), current_table_items),
+        producer.send_to_mq(tm_topic.as_str(), table_metadata),
+    );
+
+    for res in [bmt_res, ti_res, cti_res, tm_res] {
+        res?;
+    }
+
+    Ok(())
 }
 
 async fn insert_to_db(
@@ -208,7 +253,7 @@ impl ProcessorTrait for DefaultProcessor {
         transactions: Vec<Transaction>,
         start_version: u64,
         end_version: u64,
-        _: Option<u64>,
+        _db_chain_id: Option<u64>,
     ) -> anyhow::Result<ProcessingResult> {
         let processing_start = std::time::Instant::now();
         let last_transaction_timestamp = transactions.last().unwrap().timestamp.clone();
@@ -219,6 +264,35 @@ impl ProcessorTrait for DefaultProcessor {
                 .expect("Failed to spawn_blocking for TransactionModel::from_transactions");
         let processing_duration_in_secs = processing_start.elapsed().as_secs_f64();
         let db_insertion_start = std::time::Instant::now();
+
+        let network = Network::from_chain_id(_db_chain_id.unwrap_or(0));
+        if network.is_none() {
+            bail!(
+                "Error getting network from chain id. Processor {}.",
+                self.name()
+            )
+        }
+
+        let mq_result = produce_to_mq(
+            &self.producer,
+            self.name(),
+            start_version,
+            end_version,
+            network.unwrap().to_string(),
+            &block_metadata_transactions,
+            (&table_items, &current_table_items, &table_metadata),
+        )
+        .await;
+
+        if mq_result.is_err() {
+            bail!(
+                "Error sending default transactions to mq. Processor {}. Start {}. End {}. Error {:?}",
+                self.name(),
+                start_version,
+                end_version,
+                mq_result.err()
+            )
+        }
 
         let tx_result = insert_to_db(
             self.get_pool(),

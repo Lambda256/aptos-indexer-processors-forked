@@ -928,29 +928,34 @@ pub fn build_processor(
     config: &ProcessorConfig,
     per_table_chunk_sizes: AHashMap<String, usize>,
     deprecated_tables: TableFlags,
-    processor: CustomProducerEnum,
+    producer: CustomProducerEnum,
     db_pool: ArcDbPool,
     gap_detector_sender: Option<AsyncSender<ProcessingResult>>, // Parquet only
 ) -> Processor {
     match config {
         ProcessorConfig::AccountTransactionsProcessor => Processor::from(
-            AccountTransactionsProcessor::new(processor, db_pool, per_table_chunk_sizes),
+            AccountTransactionsProcessor::new(producer, db_pool, per_table_chunk_sizes),
         ),
         ProcessorConfig::AnsProcessor(config) => Processor::from(AnsProcessor::new(
+            producer,
             db_pool,
             config.clone(),
             per_table_chunk_sizes,
             deprecated_tables,
         )),
         ProcessorConfig::DefaultProcessor => Processor::from(DefaultProcessor::new(
+            producer,
             db_pool,
             per_table_chunk_sizes,
             deprecated_tables,
         )),
-        ProcessorConfig::EventsProcessor => {
-            Processor::from(EventsProcessor::new(db_pool, per_table_chunk_sizes))
-        },
+        ProcessorConfig::EventsProcessor => Processor::from(EventsProcessor::new(
+            producer,
+            db_pool,
+            per_table_chunk_sizes,
+        )),
         ProcessorConfig::FungibleAssetProcessor => Processor::from(FungibleAssetProcessor::new(
+            producer,
             db_pool,
             per_table_chunk_sizes,
             deprecated_tables,
@@ -960,17 +965,20 @@ pub fn build_processor(
             Processor::from(NftMetadataProcessor::new(db_pool, config.clone()))
         },
         ProcessorConfig::ObjectsProcessor(config) => Processor::from(ObjectsProcessor::new(
+            producer,
             db_pool,
             config.clone(),
             per_table_chunk_sizes,
             deprecated_tables,
         )),
         ProcessorConfig::StakeProcessor(config) => Processor::from(StakeProcessor::new(
+            producer,
             db_pool,
             config.clone(),
             per_table_chunk_sizes,
         )),
         ProcessorConfig::TokenV2Processor(config) => Processor::from(TokenV2Processor::new(
+            producer,
             db_pool,
             config.clone(),
             per_table_chunk_sizes,
@@ -979,9 +987,14 @@ pub fn build_processor(
         ProcessorConfig::TransactionMetadataProcessor => Processor::from(
             TransactionMetadataProcessor::new(db_pool, per_table_chunk_sizes),
         ),
-        ProcessorConfig::UserTransactionProcessor => Processor::from(
-            UserTransactionProcessor::new(db_pool, per_table_chunk_sizes, deprecated_tables),
-        ),
+        ProcessorConfig::UserTransactionProcessor => {
+            Processor::from(UserTransactionProcessor::new(
+                producer,
+                db_pool,
+                per_table_chunk_sizes,
+                deprecated_tables,
+            ))
+        },
         ProcessorConfig::ParquetDefaultProcessor(config) => {
             Processor::from(ParquetDefaultProcessor::new(
                 db_pool,

@@ -140,7 +140,7 @@ impl Worker {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         processor_config: ProcessorConfig,
-        brokers: String,
+        brokers: Option<String>,
         postgres_connection_string: String,
         indexer_grpc_data_service_address: Url,
         grpc_http2_config: IndexerGrpcHttp2Config,
@@ -175,7 +175,11 @@ impl Worker {
             service_type = PROCESSOR_SERVICE_TYPE,
             "[Parser] Finish creating the connection pool"
         );
-        let producer = CustomProducerEnum::new(brokers.as_str());
+        let producer = match brokers.as_deref() {
+            Some(brokers_str) => CustomProducerEnum::new(brokers_str),
+            None => CustomProducerEnum::new(""), // Noop processor
+        };
+
         info!(
             processor_name = processor_name,
             service_type = PROCESSOR_SERVICE_TYPE,

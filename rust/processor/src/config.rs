@@ -20,7 +20,7 @@ pub const QUERY_DEFAULT_RETRY_DELAY_MS: u64 = 500;
 pub struct IndexerGrpcProcessorConfig {
     pub processor_config: ProcessorConfig,
     pub postgres_connection_string: String,
-    pub brokers: String,
+    pub brokers: Option<String>,
     // TODO: Add TLS support.
     pub indexer_grpc_data_service_address: Url,
     #[serde(flatten)]

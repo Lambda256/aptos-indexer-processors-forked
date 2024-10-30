@@ -1,20 +1,20 @@
-# Aptos Indexer Client Guide
+# Aptos Indexer Processors (Fork)
+This repository is a fork of the [Aptos Indexer Processors](https://github.com/aptos-labs/aptos-indexer-processors) project, aimed at enhancing the existing functionalities and improving performance. The project is designed to efficiently index and process data from the Aptos blockchain.
 
-This guide will get you started with creating an Aptos indexer with custom parsing. We have several endpoints that provided a streaming RPC of transaction data.
+## Enhanced Features
+- **Fungible Asset Balances Performance Improvement**: 
+The performance of the `fungible_asset_balances` table has been optimized. This enhancement allows for faster queries and improved overall efficiency, and the updated table is now exposed through Hasura.
 
-## GRPC Data Stream Endpoints
 
-- devnet: https://grpc.devnet.aptoslabs.com:443
+- **Kafka Data Storage**: Added functionality to store data in Kafka when the broker is specified in the configuration. This feature supports the implementation of the Aptos event stream service.  
 
-- testnet: https://grpc.testnet.aptoslabs.com:443
-
-- mainnet: https://grpc.mainnet.aptoslabs.com:443
-
-## Request
+## Configuration
 
 - `config.yaml`
   - `chain_id`: ID of the chain used for validation purposes.
   - `grpc_data_stream_endpoint`: Replace with the grpc data stream endpoints for mainnet, devnet, testnet, or previewnet.
+    - mainnet: https://grpc.mainnet.aptoslabs.com:443
+    - testnet: https://grpc.testnet.aptoslabs.com:443
   - `grpc_data_stream_api_key`: Replace `YOUR_TOKEN` with your auth token.
   - `db_connection_uri`: The DB connection used to write the processed data
   - (optional) `starting-version`
@@ -49,10 +49,3 @@ This guide will get you started with creating an Aptos indexer with custom parsi
 
 - The response is a stream of `RawDatastreamResponse` objects.
 - To learn more about the protos and the code generated from those protos see [protos/](https://github.com/aptos-labs/aptos-core/tree/main/protos) in aptos-core.
-
-## [Aptos Indexer GRPC Release Notes](https://github.com/aptos-labs/aptos-core/blob/main/ecosystem/indexer-grpc/release_notes.md)
-
-> [!WARNING]  
-> For production-grade indexers, we recommend the Rust processors.
-> The Python implementation is known to have a grpc deserialization recursion limit. The issue is with the GRPC library and we haven't had a chance to look into this. Please proceed with caution.
-> The typescript implementation is known to get stuck when there are lots of data to process. The issue is with the GRPC client and we haven't had a chance to optimize. Please proceed with caution.

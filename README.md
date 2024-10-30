@@ -1,6 +1,8 @@
 # Aptos Indexer Processors (Fork)
 This repository is a fork of the [Aptos Indexer Processors](https://github.com/aptos-labs/aptos-indexer-processors) project, aimed at enhancing the existing functionalities and improving performance. The project is designed to efficiently index and process data from the Aptos blockchain.
 
+To set up and run the project, please refer to the following link for detailed instructions: [Getting Started with Aptos Indexer Processors](https://github.com/aptos-labs/aptos-indexer-processors/tree/main/rust/processor).
+
 ## Enhanced Features
 - **Fungible Asset Balances Performance Improvement**: 
 The performance of the `fungible_asset_balances` table has been optimized. This enhancement allows for faster queries and improved overall efficiency, and the updated table is now exposed through Hasura.
@@ -49,3 +51,5 @@ The performance of the `fungible_asset_balances` table has been optimized. This 
 
 - The response is a stream of `RawDatastreamResponse` objects.
 - To learn more about the protos and the code generated from those protos see [protos/](https://github.com/aptos-labs/aptos-core/tree/main/protos) in aptos-core.
+
+

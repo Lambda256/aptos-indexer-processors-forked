@@ -4,8 +4,8 @@ This repository is a fork of the [Aptos Indexer Processors](https://github.com/a
 To set up and run the project, please refer to the following link for detailed instructions: [Getting Started with Aptos Indexer Processors](https://github.com/aptos-labs/aptos-indexer-processors/tree/main/rust/processor).
 
 ## Enhanced Features
-- **Fungible Asset Balances Performance Improvement**: 
-The performance of the `fungible_asset_balances` table has been optimized. This enhancement allows for faster queries and improved overall efficiency, and the updated table is now exposed through Hasura.
+- **Postgres Performance Improvement**:
+  Numerous optimizations has been made to existing postgres tables to increase GraphQL query performance, and as a result, `fungible_asset_balances` table is now exposed in GraphQL schema.
 
 
 - **Kafka Data Storage**: Added functionality to store data in Kafka when the broker is specified in the configuration. This feature supports the implementation of the Aptos event stream service.  
@@ -25,8 +25,8 @@ The performance of the `fungible_asset_balances` table has been optimized. This 
   - (optional) `brokers`
     - endpoint of the Kafka brokers
     - If brokers are set, the processor will publish the processed data to the Kafka topic.
-    - Name of Kafka topic is `aptos.{mainnet/testnet}.{processor name}`.
-      - i.e.) `aptos.mainnet.account.transactions.processor`
+    - Name of Kafka topic is `aptos.{mainnet/testnet}.{model name}`.
+      - e.g. `aptos.mainnet.account.transactions.processor`
 
   Your `config.yaml` should look like this: 
   ```yaml

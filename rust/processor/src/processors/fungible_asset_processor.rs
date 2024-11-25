@@ -24,7 +24,11 @@ use crate::{
     gap_detectors::ProcessingResult,
     schema,
     utils::{
-        counters::PROCESSOR_UNKNOWN_TYPE_COUNT, database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool}, mq::{CustomProducer, CustomProducerEnum}, network::Network, util::{get_entry_function_from_user_request, standardize_address}
+        counters::PROCESSOR_UNKNOWN_TYPE_COUNT,
+        database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool},
+        mq::{CustomProducer, CustomProducerEnum},
+        network::Network,
+        util::{get_entry_function_from_user_request, standardize_address},
     },
     worker::TableFlags,
 };
@@ -214,7 +218,8 @@ fn insert_fungible_asset_activities_query(
     (
         diesel::insert_into(schema::fungible_asset_activities::table)
             .values(items_to_insert)
-            .on_conflict_do_nothing(),
+            .on_conflict((transaction_version, event_index))
+            .do_nothing(),
         None,
     )
 }
@@ -266,7 +271,8 @@ fn insert_fungible_asset_balances_query(
     (
         diesel::insert_into(schema::fungible_asset_balances::table)
             .values(items_to_insert)
-            .on_conflict_do_nothing(),
+            .on_conflict((transaction_version, write_set_change_index))
+            .do_nothing(),
         None,
     )
 }
@@ -371,7 +377,8 @@ fn insert_coin_supply_query(
     (
         diesel::insert_into(schema::coin_supply::table)
             .values(items_to_insert)
-            .on_conflict_do_nothing(),
+            .on_conflict((transaction_version, coin_type_hash))
+            .do_nothing(),
         None,
     )
 }

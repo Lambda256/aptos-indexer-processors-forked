@@ -13,6 +13,7 @@ pub mod monitoring_processor;
 pub mod nft_metadata_processor;
 pub mod objects_processor;
 pub mod parquet_processors;
+pub mod raw_transaction_processor;
 pub mod stake_processor;
 pub mod token_v2_processor;
 pub mod transaction_metadata_processor;
@@ -27,6 +28,7 @@ use self::{
     monitoring_processor::MonitoringProcessor,
     nft_metadata_processor::{NftMetadataProcessor, NftMetadataProcessorConfig},
     objects_processor::{ObjectsProcessor, ObjectsProcessorConfig},
+    raw_transaction_processor::RawTransactionProcessor,
     stake_processor::{StakeProcessor, StakeProcessorConfig},
     token_v2_processor::{TokenV2Processor, TokenV2ProcessorConfig},
     transaction_metadata_processor::TransactionMetadataProcessor,
@@ -203,6 +205,7 @@ pub enum ProcessorConfig {
     StakeProcessor(StakeProcessorConfig),
     TokenV2Processor(TokenV2ProcessorConfig),
     TransactionMetadataProcessor,
+    RawTransactionProcessor,
     UserTransactionProcessor,
     ParquetDefaultProcessor(ParquetDefaultProcessorConfig),
     ParquetFungibleAssetActivitiesProcessor(ParquetFungibleAssetActivitiesProcessorConfig),
@@ -266,6 +269,7 @@ pub enum Processor {
     TokenV2Processor,
     TransactionMetadataProcessor,
     UserTransactionProcessor,
+    RawTransactionProcessor,
     // Parquet processors
     ParquetDefaultProcessor,
     ParquetFungibleAssetActivitiesProcessor,

@@ -3,23 +3,18 @@
 
 use super::{DefaultProcessingResult, ProcessorName, ProcessorTrait};
 use crate::{
-    db::common::models::user_transactions_models::{
-        signatures::Signature, user_transactions::UserTransactionModel,
-    },
     gap_detectors::ProcessingResult,
-    schema,
     utils::{
-        counters::PROCESSOR_UNKNOWN_TYPE_COUNT,
-        database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool},
+        database::ArcDbPool,
         mq::{CustomProducer, CustomProducerEnum},
         network::Network,
     },
-    worker::TableFlags,
 };
 use anyhow::bail;
-use aptos_protos::transaction::v1::{transaction::TxnData, Transaction};
+use aptos_protos::transaction::v1::Transaction;
 use async_trait::async_trait;
 
+use crate::db::common::models::raw_transaction_model::raw_transactions::RawTransactionModel;
 use std::fmt::Debug;
 
 pub struct RawTransactionProcessor {
@@ -48,7 +43,7 @@ async fn produce_to_mq(
     start_version: u64,
     end_version: u64,
     network: String,
-    user_transactions: &[UserTransactionModel],
+    raw_transactions: &[RawTransactionModel],
 ) -> Result<(), String> {
     tracing::trace!(
         name = name,
@@ -58,11 +53,9 @@ async fn produce_to_mq(
     );
 
     let ut_topic = format!("aptos.{}.raw.transactions", network);
-    let (ut_res, is_res) = tokio::join!(producer.send_to_mq(ut_topic.as_str(), user_transactions),);
-
-    for res in [ut_res, is_res] {
-        res?;
-    }
+    producer
+        .send_to_mq(ut_topic.as_str(), raw_transactions)
+        .await?;
 
     Ok(())
 }
@@ -84,11 +77,10 @@ impl ProcessorTrait for RawTransactionProcessor {
         let last_transaction_timestamp = transactions.last().unwrap().timestamp.clone();
         let mq_production_start = std::time::Instant::now();
 
-        let mut signatures = vec![];
-        let mut user_transactions = vec![];
+        let mut raw_transactions = vec![];
         for txn in &transactions {
-            // TODO:
-              
+            let raw_transaction = RawTransactionModel::from_transaction(txn);
+            raw_transactions.push(raw_transaction);
         }
 
         let processing_duration_in_secs = processing_start.elapsed().as_secs_f64();
@@ -107,7 +99,7 @@ impl ProcessorTrait for RawTransactionProcessor {
             start_version,
             end_version,
             network.unwrap().to_string(),
-            &user_transactions,
+            &raw_transactions,
         )
         .await;
         let db_insertion_duration_in_secs = mq_production_start.elapsed().as_secs_f64();

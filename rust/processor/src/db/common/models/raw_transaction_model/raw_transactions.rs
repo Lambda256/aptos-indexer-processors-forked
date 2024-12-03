@@ -122,6 +122,7 @@ impl RawTransaction {
             max_gas_amount,
             gas_unit_price,
             expiration_timestamp_secs,
+            // TODO: implementation
             payload: None,
             signature,
             events,

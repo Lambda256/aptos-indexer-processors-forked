@@ -8,7 +8,6 @@ use crate::utils::util::{
 use aptos_protos::transaction::v1::transaction::{TransactionType, TxnData};
 use aptos_protos::transaction::v1::Transaction as TransactionPB;
 use bigdecimal::ToPrimitive;
-use diesel::dsl::IntervalDsl;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Deserialize, Debug, Serialize)]
@@ -133,12 +132,11 @@ impl RawTransaction {
             max_gas_amount,
             gas_unit_price,
             expiration_timestamp_secs,
-            // TODO: implementation
             payload_type,
             payload,
             signature,
             events,
-            timestamp: txn_timestamp.and_utc().timestamp().microsecond().microseconds,
+            timestamp: txn_timestamp.and_utc().timestamp_micros(),
             type_: TransactionType::try_from(txn.r#type)
                 .unwrap()
                 .as_str_name()

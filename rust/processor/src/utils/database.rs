@@ -123,6 +123,33 @@ pub async fn new_db_pool(
     Ok(Arc::new(pool))
 }
 
+pub async fn new_db_pool_v2(database_url: &str, max_pool_size: Option<u32>) -> Option<ArcDbPool> {
+    let (_url, cert_path) = parse_and_clean_db_url(database_url);
+
+    if _url == "" {
+        return None;
+    }
+
+    let config = if cert_path.is_some() {
+        let mut config = ManagerConfig::<MyDbConnection>::default();
+        config.custom_setup = Box::new(|conn| Box::pin(establish_connection(conn)));
+        AsyncDieselConnectionManager::<MyDbConnection>::new_with_config(database_url, config)
+    } else {
+        AsyncDieselConnectionManager::<MyDbConnection>::new(database_url)
+    };
+    let pool = Pool::builder()
+        .max_size(max_pool_size.unwrap_or(DEFAULT_MAX_POOL_SIZE))
+        .build(config)
+        .await
+        .ok()?;
+    let arc_pool = Arc::new(pool);
+    if let Err(e) = arc_pool.get().await {
+        tracing::warn!("Error getting connection from pool: {:?}", e);
+        return None;
+    }
+    Some(arc_pool)
+}
+
 pub async fn execute_in_chunks<U, T>(
     conn: ArcDbPool,
     build_query: fn(Vec<T>) -> (U, Option<&'static str>),
@@ -133,6 +160,7 @@ where
     U: QueryFragment<Backend> + diesel::query_builder::QueryId + Send + 'static,
     T: serde::Serialize + for<'de> serde::Deserialize<'de> + Clone + Send + 'static,
 {
+    
     let tasks = items_to_insert
         .chunks(chunk_size)
         .map(|chunk| {

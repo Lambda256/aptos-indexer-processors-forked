@@ -1,4 +1,3 @@
-use crate::db::common::models::default_models::write_set_changes::WriteSetChangeDetail;
 use crate::db::common::models::events_models::events::{Event, EventModel};
 use crate::db::common::models::user_transactions_models::signatures::Signature;
 use crate::db::common::models::user_transactions_models::user_transactions::UserTransactionModel;
@@ -21,7 +20,6 @@ pub struct RawTransaction {
     pub success: bool,
     pub vm_status: String,
     pub accumulator_root_hash: String,
-    pub changes: Vec<serde_json::Value>,
     pub sender: String,
     pub sequence_number: u64,
     pub max_gas_amount: u64,
@@ -43,11 +41,7 @@ impl RawTransaction {
         let block_height = txn.block_height as i64;
         let txn_version = txn.version as i64;
         let txn_timestamp = parse_timestamp(txn.timestamp.as_ref().unwrap(), txn_version);
-        let wsc_details = WriteSetChangeDetail::from_write_set_changes(
-            &info.changes,
-            txn.version.to_i64().unwrap(),
-            block_height,
-        );
+
         let mut sender: String = "".to_string();
         let mut sequence_number: u64 = 0;
         let mut max_gas_amount: u64 = 0;
@@ -102,11 +96,6 @@ impl RawTransaction {
             None => {},
         };
 
-        let mut changes: Vec<serde_json::Value> = vec![];
-        for wsc in wsc_details {
-            changes.push(serde_json::to_value(&wsc).unwrap());
-        }
-
         Self {
             version: txn.version,
             hash: standardize_address(hex::encode(info.hash.as_slice()).as_str()),
@@ -126,7 +115,6 @@ impl RawTransaction {
             accumulator_root_hash: standardize_address(
                 hex::encode(info.accumulator_root_hash.as_slice()).as_str(),
             ),
-            changes,
             sender,
             sequence_number,
             max_gas_amount,

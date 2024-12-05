@@ -52,6 +52,8 @@ impl CustomProducer for KafkaProducer {
             .set("queue.buffering.max.ms", DEFAULT_QUEUE_BUFFERING_MAX_MS)
             .set("compression.codec", "snappy")
             .set("request.required.acks", "all")
+            .set("message.max.bytes", "10000000")
+            .set("batch.size", "50000000")
             .create()
             .expect("Producer creation error");
         KafkaProducer { producer }

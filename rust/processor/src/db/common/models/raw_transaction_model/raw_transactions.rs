@@ -1,6 +1,7 @@
-use crate::db::common::models::events_models::events::{Event, EventModel};
-use crate::db::common::models::user_transactions_models::signatures::Signature;
-use crate::db::common::models::user_transactions_models::user_transactions::UserTransactionModel;
+use crate::db::postgres::models::events_models::events::{Event, EventModel};
+use crate::db::postgres::models::user_transactions_models::signatures::Signature;
+use crate::db::postgres::models::user_transactions_models::user_transactions::UserTransactionModel;
+
 use crate::utils::util::{
     get_clean_payload, get_payload_type, parse_timestamp, standardize_address,
 };
@@ -36,7 +37,7 @@ pub struct RawTransaction {
 }
 
 impl RawTransaction {
-    pub fn from_transaction(txn: &TransactionPB) -> (Self) {
+    pub fn from_transaction(txn: &TransactionPB) -> Self {
         let info = txn.info.as_ref().unwrap();
         let block_height = txn.block_height as i64;
         let txn_version = txn.version as i64;

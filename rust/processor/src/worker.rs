@@ -3,7 +3,7 @@
 
 use crate::{
     config::IndexerGrpcHttp2Config,
-    db::common::models::{ledger_info::LedgerInfo, processor_status::ProcessorStatusQuery},
+    db::postgres::models::{ledger_info::LedgerInfo, processor_status::ProcessorStatusQuery},
     gap_detectors::{
         create_gap_detector_status_tracker_loop, gap_detector::DefaultGapDetector,
         parquet_gap_detector::ParquetFileGapDetectorInner, GapDetector, ProcessingResult,
@@ -26,6 +26,7 @@ use crate::{
             parquet_fungible_asset_processor::ParquetFungibleAssetProcessor,
             parquet_token_v2_processor::ParquetTokenV2Processor,
             parquet_transaction_metadata_processor::ParquetTransactionMetadataProcessor,
+            parquet_user_transactions_processor::ParquetUserTransactionsProcessor,
         },
         raw_transaction_processor::RawTransactionProcessor,
         stake_processor::StakeProcessor,
@@ -112,6 +113,25 @@ bitflags! {
 
         // User transaction
         const SIGNATURES = 1 << 23;
+
+        // More tables
+        const CURRENT_TABLE_ITEMS = 1 << 24;
+        const BLOCK_METADATA_TRANSACTIONS = 1 << 25;
+
+        // Events
+        const EVENTS = 1 << 30; // start at 30 to avoid conflicts with other flags.
+    }
+}
+
+impl TableFlags {
+    pub fn from_set(set: &HashSet<String>) -> Self {
+        let mut flags = TableFlags::empty();
+        for table in set {
+            if let Some(flag) = TableFlags::from_name(table) {
+                flags |= flag;
+            }
+        }
+        flags
     }
 }
 
@@ -1042,6 +1062,13 @@ pub fn build_processor(
         )),
         ProcessorConfig::ParquetFungibleAssetActivitiesProcessor(config) => {
             Processor::from(ParquetFungibleAssetActivitiesProcessor::new(
+                db_pool,
+                config.clone(),
+                gap_detector_sender.expect("Parquet processor requires a gap detector sender"),
+            ))
+        },
+        ProcessorConfig::ParquetUserTransactionsProcessor(config) => {
+            Processor::from(ParquetUserTransactionsProcessor::new(
                 db_pool,
                 config.clone(),
                 gap_detector_sender.expect("Parquet processor requires a gap detector sender"),

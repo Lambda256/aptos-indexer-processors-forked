@@ -3,9 +3,15 @@
 
 use super::{DefaultProcessingResult, ProcessorName, ProcessorTrait};
 use crate::{
-    db::common::models::object_models::{
-        v2_object_utils::{ObjectAggregatedData, ObjectAggregatedDataMapping, ObjectWithMetadata},
-        v2_objects::{CurrentObject, Object},
+    db::postgres::models::{
+        object_models::{
+            v2_object_utils::{
+                ObjectAggregatedData, ObjectAggregatedDataMapping, ObjectWithMetadata,
+                Untransferable,
+            },
+            v2_objects::{CurrentObject, Object},
+        },
+        resources::FromWriteResource,
     },
     gap_detectors::ProcessingResult,
     schema,
@@ -127,7 +133,7 @@ async fn insert_to_db(
     Ok(())
 }
 
-fn insert_objects_query(
+pub fn insert_objects_query(
     items_to_insert: Vec<Object>,
 ) -> (
     impl QueryFragment<Pg> + diesel::query_builder::QueryId + Send,
@@ -144,7 +150,7 @@ fn insert_objects_query(
     )
 }
 
-fn insert_current_objects_query(
+pub fn insert_current_objects_query(
     items_to_insert: Vec<CurrentObject>,
 ) -> (
     impl QueryFragment<Pg> + diesel::query_builder::QueryId + Send,
@@ -185,7 +191,7 @@ impl ProcessorTrait for ObjectsProcessor {
         end_version: u64,
         _db_chain_id: Option<u64>,
     ) -> anyhow::Result<ProcessingResult> {
-        let processing_start = std::time::Instant::now();
+        let processing_start: std::time::Instant = std::time::Instant::now();
         let last_transaction_timestamp = transactions.last().unwrap().timestamp.clone();
 
         let mut conn = self.get_conn().await;
@@ -216,7 +222,7 @@ impl ProcessorTrait for ObjectsProcessor {
                 if let Change::WriteResource(wr) = wsc.change.as_ref().unwrap() {
                     let address = standardize_address(&wr.address.to_string());
                     if let Some(object_with_metadata) =
-                        ObjectWithMetadata::from_write_resource(wr, txn_version).unwrap()
+                        ObjectWithMetadata::from_write_resource(wr).unwrap()
                     {
                         // Object core is the first struct that we need to get
                         object_metadata_helper.insert(
@@ -240,6 +246,20 @@ impl ProcessorTrait for ObjectsProcessor {
                                 token_identifier: None,
                             },
                         );
+                    }
+                }
+            }
+
+            // Second pass to get object metadata
+            for wsc in changes.iter() {
+                if let Change::WriteResource(write_resource) = wsc.change.as_ref().unwrap() {
+                    let address = standardize_address(&write_resource.address.to_string());
+                    if let Some(aggregated_data) = object_metadata_helper.get_mut(&address) {
+                        if let Some(untransferable) =
+                            Untransferable::from_write_resource(write_resource).unwrap()
+                        {
+                            aggregated_data.untransferable = Some(untransferable);
+                        }
                     }
                 }
             }

@@ -324,8 +324,12 @@ impl ProcessorTrait for DefaultProcessor {
             start_version,
             end_version,
             network.unwrap().to_string(),
-            &block_metadata_transactions,
-            (&table_items, &current_table_items, &table_metadata),
+            &postgres_block_metadata_transactions,
+            (
+                &postgres_table_items,
+                &postgres_current_table_items,
+                &postgres_table_metadata,
+            ),
         )
         .await;
 

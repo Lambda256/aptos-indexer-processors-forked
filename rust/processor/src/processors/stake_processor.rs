@@ -694,6 +694,39 @@ impl ProcessorTrait for StakeProcessor {
             )
         }
 
+        let network = Network::from_chain_id(_db_chain_id.unwrap_or(0));
+        if network.is_none() {
+            bail!(
+                "Error getting network from chain id. Processor {}.",
+                self.name()
+            )
+        }
+
+        let mq_result = produce_to_mq(
+            &self.producer,
+            self.name(),
+            start_version,
+            end_version,
+            network.unwrap().to_string(),
+            &all_current_stake_pool_voters,
+            &all_proposal_votes,
+            &all_delegator_activities,
+            &all_delegator_balances,
+            &all_delegator_pools,
+            &all_delegator_pool_balances,
+        )
+        .await;
+
+        if mq_result.is_err() {
+            bail!(
+                "Error sending stake transactions to mq. Processor {}. Start {}. End {}. Error {:?}",
+                self.name(),
+                start_version,
+                end_version,
+                mq_result.err()
+            )
+        }
+
         let tx_result = insert_to_db(
             self.get_pool(),
             self.name(),

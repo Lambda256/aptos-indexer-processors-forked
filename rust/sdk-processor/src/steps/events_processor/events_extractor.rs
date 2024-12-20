@@ -1,4 +1,6 @@
-use crate::db::common::models::events_models::events::EventModel;
+use crate::{
+    db::common::models::events_models::events::EventModel, steps::MIN_TRANSACTIONS_PER_RAYON_JOB,
+};
 use aptos_indexer_processor_sdk::{
     aptos_protos::transaction::v1::{transaction::TxnData, Transaction},
     traits::{async_step::AsyncRunType, AsyncStep, NamedStep, Processable},
@@ -9,22 +11,20 @@ use async_trait::async_trait;
 use rayon::prelude::*;
 use tracing::warn;
 
-pub const MIN_TRANSACTIONS_PER_RAYON_JOB: usize = 64;
-
 pub struct EventsExtractor
 where
     Self: Sized + Send + 'static, {}
 
 #[async_trait]
 impl Processable for EventsExtractor {
-    type Input = Transaction;
-    type Output = EventModel;
+    type Input = Vec<Transaction>;
+    type Output = Vec<EventModel>;
     type RunType = AsyncRunType;
 
     async fn process(
         &mut self,
-        item: TransactionContext<Transaction>,
-    ) -> Result<Option<TransactionContext<EventModel>>, ProcessorError> {
+        item: TransactionContext<Vec<Transaction>>,
+    ) -> Result<Option<TransactionContext<Vec<EventModel>>>, ProcessorError> {
         // info!(
         //     start_version = item.start_version,
         //     end_version = item.end_version,
@@ -57,6 +57,7 @@ impl Processable for EventsExtractor {
                     TxnData::BlockMetadata(tx_inner) => &tx_inner.events,
                     TxnData::Genesis(tx_inner) => &tx_inner.events,
                     TxnData::User(tx_inner) => &tx_inner.events,
+                    TxnData::Validator(tx_inner) => &tx_inner.events,
                     _ => &default,
                 };
 
@@ -68,11 +69,7 @@ impl Processable for EventsExtractor {
             .collect::<Vec<EventModel>>();
         Ok(Some(TransactionContext {
             data: events,
-            start_version: item.start_version,
-            end_version: item.end_version,
-            start_transaction_timestamp: item.start_transaction_timestamp,
-            end_transaction_timestamp: item.end_transaction_timestamp,
-            total_size_in_bytes: item.total_size_in_bytes,
+            metadata: item.metadata,
         }))
     }
 }

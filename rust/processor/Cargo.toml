@@ -17,7 +17,6 @@ ahash = { workspace = true }
 allocative = { workspace = true }
 allocative_derive = { workspace = true }
 anyhow = { workspace = true }
-aptos-indexer-processor-sdk = { workspace = true }
 aptos-moving-average = { workspace = true }
 aptos-protos = { workspace = true }
 async-trait = { workspace = true }
@@ -27,6 +26,7 @@ bitflags = { workspace = true }
 canonical_json = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
+const_format = { workspace = true }
 diesel = { workspace = true }
 diesel-async = { workspace = true }
 diesel_migrations = { workspace = true }
@@ -62,7 +62,6 @@ url = { workspace = true }
 
 # Postgres SSL support
 native-tls = { workspace = true }
-num = { workspace = true }
 postgres-native-tls = { workspace = true }
 tiny-keccak = { workspace = true }
 tokio-postgres = { workspace = true }

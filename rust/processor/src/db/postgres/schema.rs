@@ -85,6 +85,20 @@ diesel::table! {
 }
 
 diesel::table! {
+    backfill_processor_status (backfill_alias) {
+        #[max_length = 50]
+        backfill_alias -> Varchar,
+        #[max_length = 50]
+        backfill_status -> Varchar,
+        last_success_version -> Int8,
+        last_updated -> Timestamp,
+        last_transaction_timestamp -> Nullable<Timestamp>,
+        backfill_start_version -> Int8,
+        backfill_end_version -> Nullable<Int8>,
+    }
+}
+
+diesel::table! {
     block_metadata_transactions (version) {
         version -> Int8,
         block_height -> Int8,
@@ -929,7 +943,7 @@ diesel::table! {
 
 diesel::table! {
     processor_status (processor) {
-        #[max_length = 50]
+        #[max_length = 100]
         processor -> Varchar,
         last_success_version -> Int8,
         last_updated -> Timestamp,
@@ -1285,6 +1299,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     ans_lookup_v2,
     ans_primary_name,
     ans_primary_name_v2,
+    backfill_processor_status,
     block_metadata_transactions,
     coin_activities,
     coin_balances,

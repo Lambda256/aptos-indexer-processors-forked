@@ -35,7 +35,7 @@ use self::{
     user_transaction_processor::UserTransactionProcessor,
 };
 use crate::{
-    db::common::models::processor_status::ProcessorStatus,
+    db::postgres::models::processor_status::ProcessorStatus,
     gap_detectors::ProcessingResult,
     processors::parquet_processors::{
         parquet_ans_processor::{ParquetAnsProcessor, ParquetAnsProcessorConfig},
@@ -50,6 +50,9 @@ use crate::{
         parquet_token_v2_processor::{ParquetTokenV2Processor, ParquetTokenV2ProcessorConfig},
         parquet_transaction_metadata_processor::{
             ParquetTransactionMetadataProcessor, ParquetTransactionMetadataProcessorConfig,
+        },
+        parquet_user_transactions_processor::{
+            ParquetUserTransactionsProcessor, ParquetUserTransactionsProcessorConfig,
         },
     },
     schema::processor_status,
@@ -214,6 +217,7 @@ pub enum ProcessorConfig {
     ParquetAnsProcessor(ParquetAnsProcessorConfig),
     ParquetEventsProcessor(ParquetEventsProcessorConfig),
     ParquetTokenV2Processor(ParquetTokenV2ProcessorConfig),
+    ParquetUserTransactionsProcessor(ParquetUserTransactionsProcessorConfig),
 }
 
 impl ProcessorConfig {
@@ -233,6 +237,7 @@ impl ProcessorConfig {
                 | ProcessorConfig::ParquetEventsProcessor(_)
                 | ProcessorConfig::ParquetTokenV2Processor(_)
                 | ProcessorConfig::ParquetFungibleAssetActivitiesProcessor(_)
+                | ProcessorConfig::ParquetUserTransactionsProcessor(_)
         )
     }
 }
@@ -278,6 +283,7 @@ pub enum Processor {
     ParquetAnsProcessor,
     ParquetEventsProcessor,
     ParquetTokenV2Processor,
+    ParquetUserTransactionsProcessor,
 }
 
 #[cfg(test)]

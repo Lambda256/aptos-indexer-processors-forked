@@ -3,7 +3,7 @@
 
 use super::{DefaultProcessingResult, ProcessorName, ProcessorTrait};
 use crate::{
-    db::common::models::account_transaction_models::account_transactions::AccountTransaction,
+    db::postgres::models::account_transaction_models::account_transactions::AccountTransaction,
     gap_detectors::ProcessingResult,
     schema,
     utils::{
@@ -79,7 +79,7 @@ async fn insert_to_db(
     Ok(())
 }
 
-fn insert_account_transactions_query(
+pub fn insert_account_transactions_query(
     item_to_insert: Vec<AccountTransaction>,
 ) -> (
     impl QueryFragment<Pg> + diesel::query_builder::QueryId + Send,

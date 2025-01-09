@@ -4,7 +4,7 @@ use rdkafka::{
 };
 
 const DEFAULT_MESSAGE_TIMEOUT_MS: &str = "5000";
-const DEFAULT_QUEUE_BUFFERING_MAX_MS: &str = "2000";
+const DEFAULT_QUEUE_BUFFERING_MAX_MS: &str = "100";
 
 pub trait CustomProducer {
     fn new(brokers: &str) -> Self;

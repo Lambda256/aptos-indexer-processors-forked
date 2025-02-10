@@ -36,6 +36,9 @@ Processors that index data from the Aptos Transaction Stream (GRPC).
               - "0x07"
             # Skip all transactions that aren't user transactions
             focus_user_transactions: false
+            # Skip transactions that start with these strings
+            skip_contract_prefix_names:
+              - "test"
           deprecated_tables: [               
             "MOVE_RESOURCES",                                  
             "WRITE_SET_CHANGES",                               

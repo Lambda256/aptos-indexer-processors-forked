@@ -13,8 +13,8 @@ use crate::{
         database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool},
         mq::{CustomProducer, CustomProducerEnum},
         network::Network,
+        table_flags::TableFlags,
     },
-    worker::TableFlags,
 };
 use ahash::AHashMap;
 use anyhow::bail;
@@ -144,7 +144,9 @@ pub fn insert_user_transactions_query(
             .on_conflict(version)
             .do_update()
             .set((
-                expiration_timestamp_secs.eq(excluded(expiration_timestamp_secs)),
+                entry_function_contract_address.eq(excluded(entry_function_contract_address)),
+                entry_function_module_name.eq(excluded(entry_function_module_name)),
+                entry_function_function_name.eq(excluded(entry_function_function_name)),
                 inserted_at.eq(excluded(inserted_at)),
             )),
         None,
@@ -186,7 +188,7 @@ impl ProcessorTrait for UserTransactionProcessor {
         _db_chain_id: Option<u64>,
     ) -> anyhow::Result<ProcessingResult> {
         let processing_start = std::time::Instant::now();
-        let last_transaction_timestamp = transactions.last().unwrap().timestamp.clone();
+        let last_transaction_timestamp = transactions.last().unwrap().timestamp;
 
         let (user_transactions, signatures) =
             user_transaction_parse(transactions, self.deprecated_tables);

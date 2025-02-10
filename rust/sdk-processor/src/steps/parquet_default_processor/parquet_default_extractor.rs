@@ -26,7 +26,7 @@ use processor::{
         default_processor::process_transactions,
         parquet_processors::parquet_default_processor::process_transactions_parquet,
     },
-    worker::TableFlags,
+    utils::table_flags::TableFlags,
 };
 use std::collections::HashMap;
 use tracing::debug;
@@ -66,7 +66,7 @@ impl Processable for ParquetDefaultExtractor {
             .collect();
         let parquet_block_metadata_transactions: Vec<BlockMetadataTransaction> =
             raw_block_metadata_transactions
-                .iter()
+                .into_iter()
                 .map(BlockMetadataTransaction::from_raw)
                 .collect();
         let parquet_table_metadata: Vec<TableMetadata> = raw_table_metadata

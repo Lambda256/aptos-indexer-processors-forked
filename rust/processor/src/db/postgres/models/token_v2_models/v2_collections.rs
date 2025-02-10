@@ -5,15 +5,19 @@
 #![allow(clippy::extra_unused_lifetimes)]
 #![allow(clippy::unused_unit)]
 
-use super::v2_token_utils::{Collection, TokenStandard};
 use crate::{
-    db::postgres::models::{
-        object_models::v2_object_utils::ObjectAggregatedDataMapping,
-        resources::FromWriteResource,
-        token_models::{
-            collection_datas::CollectionData,
-            token_utils::{CollectionDataIdType, TokenWriteSet},
-            tokens::TableHandleToOwner,
+    db::{
+        common::models::{
+            object_models::v2_object_utils::ObjectAggregatedDataMapping,
+            token_v2_models::v2_token_utils::{Collection, TokenStandard},
+        },
+        postgres::models::{
+            resources::FromWriteResource,
+            token_models::{
+                collection_datas::CollectionData,
+                token_utils::{CollectionDataIdType, TokenWriteSet},
+                tokens::TableHandleToOwner,
+            },
         },
     },
     schema::{collections_v2, current_collections_v2},

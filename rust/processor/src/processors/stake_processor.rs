@@ -628,7 +628,7 @@ impl ProcessorTrait for StakeProcessor {
         _db_chain_id: Option<u64>,
     ) -> anyhow::Result<ProcessingResult> {
         let processing_start = std::time::Instant::now();
-        let last_transaction_timestamp = transactions.last().unwrap().timestamp.clone();
+        let last_transaction_timestamp = transactions.last().unwrap().timestamp;
 
         let conn = self.get_conn().await;
         let query_retries = self.config.query_retries;

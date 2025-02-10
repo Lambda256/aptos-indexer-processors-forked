@@ -18,7 +18,7 @@ use processor::{
         },
     },
     processors::default_processor::process_transactions,
-    worker::TableFlags,
+    utils::table_flags::TableFlags,
 };
 
 pub struct DefaultExtractor
@@ -68,7 +68,7 @@ impl Processable for DefaultExtractor {
             .collect();
         let postgres_block_metadata_transactions: Vec<BlockMetadataTransactionModel> =
             raw_block_metadata_transactions
-                .iter()
+                .into_iter()
                 .map(BlockMetadataTransactionModel::from_raw)
                 .collect();
         let postgres_table_metadata = raw_table_metadata

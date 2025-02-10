@@ -24,8 +24,8 @@ use crate::{
         database::{execute_in_chunks, get_config_table_chunk_size, ArcDbPool},
         mq::{CustomProducer, CustomProducerEnum},
         network::Network,
+        table_flags::TableFlags,
     },
-    worker::TableFlags,
 };
 use ahash::AHashMap;
 use anyhow::bail;
@@ -41,7 +41,6 @@ use diesel::{
 use std::fmt::Debug;
 use tokio::join;
 use tracing::error;
-
 pub struct DefaultProcessor {
     producer: CustomProducerEnum,
     connection_pool: ArcDbPool,
@@ -267,7 +266,7 @@ impl ProcessorTrait for DefaultProcessor {
         _db_chain_id: Option<u64>,
     ) -> anyhow::Result<ProcessingResult> {
         let processing_start = std::time::Instant::now();
-        let last_transaction_timestamp = transactions.last().unwrap().timestamp.clone();
+        let last_transaction_timestamp = transactions.last().unwrap().timestamp;
 
         let (
             raw_block_metadata_transactions,
@@ -288,7 +287,7 @@ impl ProcessorTrait for DefaultProcessor {
 
         let postgres_block_metadata_transactions: Vec<BlockMetadataTransactionModel> =
             raw_block_metadata_transactions
-                .iter()
+                .into_iter()
                 .map(BlockMetadataTransactionModel::from_raw)
                 .collect();
 

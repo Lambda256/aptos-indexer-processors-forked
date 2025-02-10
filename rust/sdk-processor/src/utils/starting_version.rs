@@ -61,13 +61,19 @@ pub async fn get_min_last_success_version_parquet(
             .context("Failed to get minimum last success version from DB")?
     };
 
-    // If nothing checkpointed, return the `starting_version` from the config, or 0 if not set.
-    Ok(min_processed_version.unwrap_or(
-        indexer_processor_config
-            .transaction_stream_config
-            .starting_version
-            .unwrap_or(0),
-    ))
+    let config_starting_version = indexer_processor_config
+        .transaction_stream_config
+        .starting_version
+        .unwrap_or(0);
+
+    if let Some(min_processed_version) = min_processed_version {
+        Ok(std::cmp::max(
+            min_processed_version,
+            config_starting_version,
+        ))
+    } else {
+        Ok(config_starting_version)
+    }
 }
 
 /// Get the minimum last success version from the database for the given processors.
@@ -115,7 +121,7 @@ async fn get_min_processed_version_from_db(
                     Some(status.last_success_version as u64)
                 },
                 // Handle specific cases where `Ok` contains `None` (no status found)
-                Ok(None) => Some(0),
+                Ok(None) => None,
                 // TODO: If the result is an `Err`, what should we do?
                 Err(e) => {
                     eprintln!("Error fetching processor status: {:?}", e);
@@ -208,7 +214,7 @@ async fn get_starting_version_from_db(
     // return the higher of the checkpointed version + 1 and `starting_version`.
     Ok(status.map(|status| {
         std::cmp::max(
-            status.last_success_version as u64 + 1,
+            status.last_success_version as u64,
             indexer_processor_config
                 .transaction_stream_config
                 .starting_version
@@ -233,7 +239,9 @@ mod tests {
         utils::database::{new_db_pool, run_migrations},
     };
     use ahash::AHashMap;
-    use aptos_indexer_processor_sdk::aptos_indexer_transaction_stream::TransactionStreamConfig;
+    use aptos_indexer_processor_sdk::aptos_indexer_transaction_stream::{
+        utils::AdditionalHeaders, TransactionStreamConfig,
+    };
     use aptos_indexer_testing_framework::database::{PostgresTestDatabase, TestDatabase};
     use diesel_async::RunQueryDsl;
     use processor::schema::processor_status;
@@ -268,6 +276,7 @@ mod tests {
                 indexer_grpc_http2_ping_timeout_secs: 1,
                 indexer_grpc_reconnection_timeout_secs: 1,
                 indexer_grpc_response_item_timeout_secs: 1,
+                additional_headers: AdditionalHeaders::default(),
             },
             processor_config,
             backfill_config,

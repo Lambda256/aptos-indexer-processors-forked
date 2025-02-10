@@ -5,4 +5,5 @@ pub mod counters;
 pub mod database;
 pub mod mq;
 pub mod network;
+pub mod table_flags;
 pub mod util;

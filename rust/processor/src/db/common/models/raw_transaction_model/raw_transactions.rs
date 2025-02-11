@@ -1,4 +1,5 @@
-use crate::db::postgres::models::events_models::events::{Event, EventModel};
+use crate::db::common::models::event_models::raw_events::parse_events;
+use crate::db::postgres::models::events_models::events::EventPG;
 use crate::db::postgres::models::user_transactions_models::signatures::Signature;
 use crate::db::postgres::models::user_transactions_models::user_transactions::UserTransactionModel;
 
@@ -29,7 +30,7 @@ pub struct RawTransaction {
     pub payload_type: Option<String>,
     pub payload: Option<serde_json::Value>,
     pub signature: Vec<Signature>,
-    pub events: Vec<Event>,
+    pub events: Vec<EventPG>,
     pub timestamp: i64,
     pub type_: String,
 
@@ -54,15 +55,10 @@ impl RawTransaction {
         let mut events = vec![];
         match txn.txn_data.as_ref() {
             Some(txn_data) => {
-                let default = vec![];
-                let raw_events = match txn_data {
-                    TxnData::BlockMetadata(tx_inner) => &tx_inner.events,
-                    TxnData::Genesis(tx_inner) => &tx_inner.events,
-                    TxnData::User(tx_inner) => &tx_inner.events,
-                    TxnData::Validator(tx_inner) => &tx_inner.events,
-                    _ => &default,
-                };
-                let txn_events = EventModel::from_events(raw_events, txn_version, block_height);
+                let txn_events: Vec<EventPG> = parse_events(txn, "RawTransactionProcessor")
+                    .into_iter()
+                    .map(|e| e.into())
+                    .collect();
                 events.extend(txn_events);
                 if let TxnData::User(inner) = txn_data {
                     let (user_transaction, sigs) = UserTransactionModel::from_transaction(

@@ -3,7 +3,7 @@ use aptos_indexer_testing_framework::sdk_test_context::SdkTestContext;
 use sdk_processor::{
     config::{
         db_config::{DbConfig, PostgresConfig},
-        indexer_processor_config::IndexerProcessorConfig,
+        indexer_processor_config::{IndexerProcessorConfig, ProcessorMode, TestingConfig},
         processor_config::{DefaultProcessorConfig, ProcessorConfig},
     },
     processors::token_v2_processor::TokenV2ProcessorConfig,
@@ -36,12 +36,20 @@ pub fn setup_token_v2_processor_config(
     let processor_config = ProcessorConfig::TokenV2Processor(token_v2_processor_config);
 
     let processor_name = processor_config.name();
+    let testing_config: TestingConfig = TestingConfig {
+        override_starting_version: transaction_stream_config.starting_version.unwrap(),
+        ending_version: transaction_stream_config.request_ending_version.unwrap(),
+    };
+
     (
         IndexerProcessorConfig {
             processor_config,
             transaction_stream_config,
             db_config,
             backfill_config: None,
+            bootstrap_config: None,
+            testing_config: Some(testing_config),
+            mode: ProcessorMode::Testing,
         },
         processor_name,
     )
@@ -57,8 +65,8 @@ mod sdk_token_v2_processor_tests {
             run_processor_test, setup_test_environment, validate_json, DEFAULT_OUTPUT_FOLDER,
         },
     };
-    use aptos_indexer_test_transactions::{
-        // IMPORTED_DEVNET_TXNS_19922017_TOKEN_V1_OFFER_CLAIM,
+    use aptos_indexer_test_transactions::json_transactions::generated_transactions::{
+        IMPORTED_DEVNET_TXNS_19922017_TOKEN_V1_OFFER_CLAIM,
         IMPORTED_DEVNET_TXNS_78753831_TOKEN_V1_MINT_TRANSFER_WITH_V2_EVENTS,
         IMPORTED_DEVNET_TXNS_78753832_TOKEN_V2_MINT_TRANSFER_WITH_V2_EVENTS,
         IMPORTED_MAINNET_TXNS_1058723093_TOKEN_V1_MINT_WITHDRAW_DEPOSIT_EVENTS,
@@ -67,6 +75,7 @@ mod sdk_token_v2_processor_tests {
         IMPORTED_MAINNET_TXNS_141135867_TOKEN_V1_OFFER,
         IMPORTED_MAINNET_TXNS_178179220_TOKEN_V1_MUTATE_EVENT,
         IMPORTED_MAINNET_TXNS_325355235_TOKEN_V2_UNLIMITED_SUPPLY_MINT,
+        IMPORTED_MAINNET_TXNS_445585423_TOKEN_MINT_AND_BURN_EVENT,
         IMPORTED_MAINNET_TXNS_453498957_TOKEN_V2_MINT_AND_TRANSFER_EVENT_V1,
         IMPORTED_MAINNET_TXNS_537250181_TOKEN_V2_FIXED_SUPPLY_MINT,
         IMPORTED_MAINNET_TXNS_578366445_TOKEN_V2_BURN_EVENT_V2,
@@ -315,14 +324,14 @@ mod sdk_token_v2_processor_tests {
         .await;
     }
 
-    // #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    // async fn test_token_v1_offer_claim_no_table_metadata() {
-    //     process_single_transaction(
-    //         IMPORTED_DEVNET_TXNS_19922017_TOKEN_V1_OFFER_CLAIM,
-    //         Some("test_token_v1_offer_claim_no_table_metadata".to_string()),
-    //     )
-    //     .await;
-    // }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_token_v1_offer_claim_no_table_metadata() {
+        process_single_transaction(
+            IMPORTED_DEVNET_TXNS_19922017_TOKEN_V1_OFFER_CLAIM,
+            Some("test_token_v1_offer_claim_no_table_metadata".to_string()),
+        )
+        .await;
+    }
 
     /**
     * This test includes processing for the following:
@@ -351,11 +360,30 @@ mod sdk_token_v2_processor_tests {
         )
         .await;
     }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_token_v2_with_module_events() {
         process_single_transaction(
             IMPORTED_DEVNET_TXNS_78753832_TOKEN_V2_MINT_TRANSFER_WITH_V2_EVENTS,
             Some("test_token_v2_with_module_events".to_string()),
+        )
+        .await;
+    }
+
+    /**
+     * This test includes processing for the following:
+     * - Events
+     *      - 0x1::fungible_asset::MintEvent
+     *      - 0x1::fungible_asset::BurnEvent
+     * - Resources
+     *      - 0x1::fungible_asset::Supply
+     *      - 0x1::fungible_asset::Metadata
+     */
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_fungible_asset_processor_mint_and_burn_event() {
+        process_single_transaction(
+            IMPORTED_MAINNET_TXNS_445585423_TOKEN_MINT_AND_BURN_EVENT,
+            Some("mint_and_burn_event".to_string()),
         )
         .await;
     }

@@ -65,7 +65,7 @@ async fn produce_to_mq(
     start_version: u64,
     end_version: u64,
     network: String,
-    events: &[EventModel],
+    events: &[EventPG],
 ) -> Result<(), String> {
     tracing::trace!(
         name = name,

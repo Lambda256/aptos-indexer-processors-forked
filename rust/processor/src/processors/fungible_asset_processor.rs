@@ -10,8 +10,7 @@ use crate::{
                     FungibleAssetActivityConvertible, RawFungibleAssetActivity,
                 },
                 raw_v2_fungible_asset_balances::{
-                    CurrentUnifiedFungibleAssetBalanceConvertible,
-                    RawCurrentUnifiedFungibleAssetBalance, RawFungibleAssetBalance,
+                    CurrentUnifiedFungibleAssetBalanceConvertible, FungibleAssetBalanceConvertible, RawCurrentUnifiedFungibleAssetBalance, RawFungibleAssetBalance
                 },
                 raw_v2_fungible_asset_to_coin_mappings::{
                     FungibleAssetToCoinMappingConvertible, FungibleAssetToCoinMappings,
@@ -141,6 +140,7 @@ async fn insert_to_db(
     end_version: u64,
     fungible_asset_activities: &[FungibleAssetActivity],
     fungible_asset_metadata: &[FungibleAssetMetadataModel],
+    fungible_asset_balances: &[FungibleAssetBalance],
     (current_unified_fab_v1, current_unified_fab_v2): (
         &[CurrentUnifiedFungibleAssetBalance],
         &[CurrentUnifiedFungibleAssetBalance],
@@ -171,6 +171,15 @@ async fn insert_to_db(
         fungible_asset_metadata,
         get_config_table_chunk_size::<FungibleAssetMetadataModel>(
             "fungible_asset_metadata",
+            per_table_chunk_sizes,
+        ),
+    );
+    let fab = execute_in_chunks(
+        conn.clone(),
+        insert_fungible_asset_balances_query,
+        fungible_asset_balances,
+        get_config_table_chunk_size::<FungibleAssetBalance>(
+            "fungible_asset_balances",
             per_table_chunk_sizes,
         ),
     );
@@ -207,9 +216,11 @@ async fn insert_to_db(
             per_table_chunk_sizes,
         ),
     );
-    let (faa_res, fam_res, cufab1_res, cufab2_res, cs_res, fatcm_res) =
-        tokio::join!(faa, fam, cufab_v1, cufab_v2, cs, fatcm);
-    for res in [faa_res, fam_res, cufab1_res, cufab2_res, cs_res, fatcm_res] {
+    let (faa_res, fam_res, fab_res, cufab1_res, cufab2_res, cs_res, fatcm_res) =
+        tokio::join!(faa, fam, fab, cufab_v1, cufab_v2, cs, fatcm);
+    for res in [
+        faa_res, fam_res, fab_res, cufab1_res, cufab2_res, cs_res, fatcm_res,
+    ] {
         res?;
     }
 
@@ -404,7 +415,7 @@ impl ProcessorTrait for FungibleAssetProcessor {
         let (
             raw_fungible_asset_activities,
             raw_fungible_asset_metadata,
-            _raw_fungible_asset_balances,
+            raw_fungible_asset_balances,
             (raw_current_unified_fab_v1, raw_current_unified_fab_v2),
             mut coin_supply,
             fa_to_coin_mappings,
@@ -420,6 +431,12 @@ impl ProcessorTrait for FungibleAssetProcessor {
             raw_fungible_asset_metadata
                 .into_iter()
                 .map(FungibleAssetMetadataModel::from_raw)
+                .collect();
+
+        let postgres_fungible_asset_balances: Vec<FungibleAssetBalance> =
+            raw_fungible_asset_balances
+                .into_iter()
+                .map(FungibleAssetBalance::from_raw)
                 .collect();
 
         let mut postgres_current_unified_fab_v1: Vec<CurrentUnifiedFungibleAssetBalance> =
@@ -491,6 +508,7 @@ impl ProcessorTrait for FungibleAssetProcessor {
             end_version,
             &postgres_fungible_asset_activities,
             &postgres_fungible_asset_metadata,
+            &postgres_fungible_asset_balances,
             (
                 &postgres_current_unified_fab_v1,
                 &postgres_current_unified_fab_v2,

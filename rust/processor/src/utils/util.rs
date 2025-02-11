@@ -1,6 +1,7 @@
 // Copyright © Aptos Foundation
 // SPDX-License-Identifier: Apache-2.0
 
+use super::database::DbPoolConnection;
 use crate::{
     db::postgres::models::property_map::{PropertyMap, TokenObjectPropertyMap},
     utils::counters::PROCESSOR_UNKNOWN_TYPE_COUNT,
@@ -39,6 +40,13 @@ lazy_static! {
     pub static ref APT_METADATA_ADDRESS_HEX: String =
         format!("0x{}", hex::encode(*APT_METADATA_ADDRESS_RAW));
 }
+
+pub struct DbConnectionConfig<'a> {
+    pub conn: DbPoolConnection<'a>,
+    pub query_retries: u32,
+    pub query_retry_delay_ms: u64,
+}
+
 // Supporting structs to get clean payload without escaped strings
 #[derive(Debug, Deserialize, Serialize)]
 pub struct EntryFunctionPayloadClean {
@@ -461,23 +469,11 @@ pub fn convert_bcs_hex_new(typ: u8, value: String) -> Option<String> {
 
 /// Convert the json serialized PropertyMap's inner BCS fields to their original value in string format
 pub fn convert_bcs_propertymap(s: Value) -> Option<Value> {
-    match PropertyMap::from_bcs_encode_str(s) {
-        Some(e) => match serde_json::to_value(&e) {
-            Ok(val) => Some(val),
-            Err(_) => None,
-        },
-        None => None,
-    }
+    PropertyMap::from_bcs_encode_str(s).and_then(|e| serde_json::to_value(&e).ok())
 }
 
 pub fn convert_bcs_token_object_propertymap(s: Value) -> Option<Value> {
-    match TokenObjectPropertyMap::from_bcs_encode_str(s) {
-        Some(e) => match serde_json::to_value(&e) {
-            Ok(val) => Some(val),
-            Err(_) => None,
-        },
-        None => None,
-    }
+    TokenObjectPropertyMap::from_bcs_encode_str(s).and_then(|e| serde_json::to_value(&e).ok())
 }
 
 /// Convert from hex string to raw byte string

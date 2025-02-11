@@ -23,7 +23,7 @@ use processor::{
             parquet_transactions::Transaction,
             parquet_write_set_changes::WriteSetChangeModel,
         },
-        event_models::parquet_events::Event as EventPQ,
+        event_models::parquet_events::EventPQ,
         fungible_asset_models::{
             parquet_v2_fungible_asset_activities::FungibleAssetActivity,
             parquet_v2_fungible_asset_balances::{
@@ -33,6 +33,11 @@ use processor::{
             parquet_v2_fungible_metadata::FungibleAssetMetadataModel,
         },
         object_models::v2_objects::{CurrentObject, Object},
+        stake_models::{
+            parquet_delegator_activities::DelegatedStakingActivity,
+            parquet_delegator_balances::{CurrentDelegatorBalance, DelegatorBalance},
+            parquet_proposal_voters::ProposalVote,
+        },
         token_v2_models::{
             token_claims::CurrentTokenPendingClaim,
             v1_token_royalty::CurrentTokenRoyaltyV1,
@@ -82,6 +87,7 @@ use std::collections::HashSet;
     strum(serialize_all = "snake_case")
 )]
 pub enum ProcessorConfig {
+    AccountRestorationProcessor(DefaultProcessorConfig),
     AccountTransactionsProcessor(DefaultProcessorConfig),
     AnsProcessor(AnsProcessorConfig),
     DefaultProcessor(DefaultProcessorConfig),
@@ -101,6 +107,7 @@ pub enum ProcessorConfig {
     ParquetTransactionMetadataProcessor(ParquetDefaultProcessorConfig),
     ParquetAccountTransactionsProcessor(ParquetDefaultProcessorConfig),
     ParquetTokenV2Processor(ParquetDefaultProcessorConfig),
+    ParquetStakeProcessor(ParquetDefaultProcessorConfig),
     ParquetObjectsProcessor(ParquetDefaultProcessorConfig),
 }
 
@@ -123,6 +130,7 @@ impl ProcessorConfig {
             | ProcessorConfig::ParquetTransactionMetadataProcessor(config)
             | ProcessorConfig::ParquetAccountTransactionsProcessor(config)
             | ProcessorConfig::ParquetTokenV2Processor(config)
+            | ProcessorConfig::ParquetStakeProcessor(config)
             | ProcessorConfig::ParquetObjectsProcessor(config)
             | ProcessorConfig::ParquetFungibleAssetProcessor(config) => config,
             ProcessorConfig::ParquetAnsProcessor(config) => &config.default,
@@ -204,6 +212,12 @@ impl ProcessorConfig {
             ProcessorName::ParquetObjectsProcessor => HashSet::from([
                 Object::TABLE_NAME.to_string(),
                 CurrentObject::TABLE_NAME.to_string(),
+            ]),
+            ProcessorName::ParquetStakeProcessor => HashSet::from([
+                DelegatedStakingActivity::TABLE_NAME.to_string(),
+                ProposalVote::TABLE_NAME.to_string(),
+                DelegatorBalance::TABLE_NAME.to_string(),
+                CurrentDelegatorBalance::TABLE_NAME.to_string(),
             ]),
             _ => HashSet::new(), // Default case for unsupported processors
         }

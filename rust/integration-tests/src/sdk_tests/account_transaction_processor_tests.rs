@@ -2,7 +2,7 @@ use ahash::AHashMap;
 use aptos_indexer_testing_framework::sdk_test_context::SdkTestContext;
 use sdk_processor::config::{
     db_config::{DbConfig, PostgresConfig},
-    indexer_processor_config::IndexerProcessorConfig,
+    indexer_processor_config::{IndexerProcessorConfig, ProcessorMode, TestingConfig},
     processor_config::{DefaultProcessorConfig, ProcessorConfig},
 };
 use std::collections::HashSet;
@@ -26,12 +26,21 @@ pub fn setup_acc_txn_processor_config(
 
     let processor_config = ProcessorConfig::AccountTransactionsProcessor(default_processor_config);
     let processor_name = processor_config.name();
+
+    let testing_config: TestingConfig = TestingConfig {
+        override_starting_version: transaction_stream_config.starting_version.unwrap(),
+        ending_version: transaction_stream_config.request_ending_version.unwrap(),
+    };
+
     (
         IndexerProcessorConfig {
             processor_config,
             transaction_stream_config,
             db_config,
             backfill_config: None,
+            bootstrap_config: None,
+            testing_config: Some(testing_config),
+            mode: ProcessorMode::Testing,
         },
         processor_name,
     )
@@ -47,9 +56,11 @@ mod tests {
             run_processor_test, setup_test_environment, validate_json, DEFAULT_OUTPUT_FOLDER,
         },
     };
-    use aptos_indexer_test_transactions::{
+    use aptos_indexer_test_transactions::json_transactions::generated_transactions::{
         IMPORTED_MAINNET_TXNS_145959468_ACCOUNT_TRANSACTION,
         IMPORTED_MAINNET_TXNS_423176063_ACCOUNT_TRANSACTION_DELETE,
+        IMPORTED_MAINNET_TXNS_513424821_DEFAULT_BLOCK_METADATA_TRANSACTIONS,
+        IMPORTED_TESTNET_TXNS_1_GENESIS, IMPORTED_TESTNET_TXNS_5523474016_VALIDATOR_TXN,
     };
     use aptos_indexer_testing_framework::{cli_parser::get_test_config, database::TestDatabase};
     use sdk_processor::processors::account_transactions_processor::AccountTransactionsProcessor;
@@ -80,6 +91,33 @@ mod tests {
         process_single_mainnet_txn(
             IMPORTED_MAINNET_TXNS_423176063_ACCOUNT_TRANSACTION_DELETE,
             Some("account_transaction_delete_test".to_string()),
+        )
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_testnet_validator_transaction() {
+        process_single_mainnet_txn(
+            IMPORTED_TESTNET_TXNS_5523474016_VALIDATOR_TXN,
+            Some("test_testnet_validator_transaction".to_string()),
+        )
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_testnet_genesis_transaction() {
+        process_single_mainnet_txn(
+            IMPORTED_TESTNET_TXNS_1_GENESIS,
+            Some("test_testnet_genesis_transaction".to_string()),
+        )
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_mainnet_block_metadata_transaction() {
+        process_single_mainnet_txn(
+            IMPORTED_MAINNET_TXNS_513424821_DEFAULT_BLOCK_METADATA_TRANSACTIONS,
+            Some("test_mainnet_block_metadata_transaction".to_string()),
         )
         .await;
     }

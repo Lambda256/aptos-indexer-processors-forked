@@ -1,6 +1,7 @@
 use crate::{
     config::{
-        db_config::DbConfig, indexer_processor_config::IndexerProcessorConfig,
+        db_config::DbConfig,
+        indexer_processor_config::{IndexerProcessorConfig, ProcessorMode},
         processor_config::ProcessorConfig,
     },
     parquet_processors::{
@@ -113,14 +114,28 @@ impl ProcessorTrait for ParquetFungibleAssetProcessor {
         // Define processor transaction stream config
         let transaction_stream = TransactionStreamStep::new(TransactionStreamConfig {
             starting_version: Some(starting_version),
+            request_ending_version: match self.config.mode {
+                ProcessorMode::Default => None,
+                ProcessorMode::Backfill => self
+                    .config
+                    .backfill_config
+                    .as_ref()
+                    .map(|c| c.ending_version),
+                ProcessorMode::Testing => self
+                    .config
+                    .testing_config
+                    .as_ref()
+                    .map(|c| c.ending_version),
+            },
             ..self.config.transaction_stream_config.clone()
         })
         .await?;
 
         let backfill_table = set_backfill_table_flag(parquet_processor_config.backfill_table);
-        let parquet_fa_extractor = ParquetFungibleAssetExtractor {
-            opt_in_tables: backfill_table,
-        };
+        let mut parquet_fa_extractor = ParquetFungibleAssetExtractor::new(backfill_table);
+        parquet_fa_extractor
+            .bootstrap_fa_to_coin_mapping(self.db_pool.clone())
+            .await?;
 
         let gcs_client =
             initialize_gcs_client(parquet_db_config.google_application_credentials.clone()).await;

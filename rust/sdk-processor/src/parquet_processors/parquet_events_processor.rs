@@ -1,6 +1,7 @@
 use crate::{
     config::{
-        db_config::DbConfig, indexer_processor_config::IndexerProcessorConfig,
+        db_config::DbConfig,
+        indexer_processor_config::{IndexerProcessorConfig, ProcessorMode},
         processor_config::ProcessorConfig,
     },
     parquet_processors::{
@@ -30,7 +31,7 @@ use aptos_indexer_processor_sdk::{
 use parquet::schema::types::Type;
 use processor::{
     bq_analytics::generic_parquet_processor::HasParquetSchema,
-    db::parquet::models::event_models::parquet_events::Event as EventPQ,
+    db::parquet::models::event_models::parquet_events::EventPQ,
 };
 use std::{collections::HashMap, sync::Arc};
 use tracing::{debug, info};
@@ -106,6 +107,19 @@ impl ProcessorTrait for ParquetEventsProcessor {
         // Define processor transaction stream config
         let transaction_stream = TransactionStreamStep::new(TransactionStreamConfig {
             starting_version: Some(starting_version),
+            request_ending_version: match self.config.mode {
+                ProcessorMode::Default => None,
+                ProcessorMode::Backfill => self
+                    .config
+                    .backfill_config
+                    .as_ref()
+                    .map(|c| c.ending_version),
+                ProcessorMode::Testing => self
+                    .config
+                    .testing_config
+                    .as_ref()
+                    .map(|c| c.ending_version),
+            },
             ..self.config.transaction_stream_config.clone()
         })
         .await?;

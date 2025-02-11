@@ -2,7 +2,7 @@ use ahash::AHashMap;
 use aptos_indexer_testing_framework::sdk_test_context::SdkTestContext;
 use sdk_processor::config::{
     db_config::{DbConfig, PostgresConfig},
-    indexer_processor_config::IndexerProcessorConfig,
+    indexer_processor_config::{IndexerProcessorConfig, ProcessorMode, TestingConfig},
     processor_config::{DefaultProcessorConfig, ProcessorConfig},
 };
 use std::collections::HashSet;
@@ -26,12 +26,20 @@ pub fn setup_events_processor_config(
 
     let processor_config = ProcessorConfig::EventsProcessor(default_processor_config);
     let processor_name = processor_config.name();
+    let testing_config: TestingConfig = TestingConfig {
+        override_starting_version: transaction_stream_config.starting_version.unwrap(),
+        ending_version: transaction_stream_config.request_ending_version.unwrap(),
+    };
+
     (
         IndexerProcessorConfig {
             processor_config,
             transaction_stream_config,
             db_config,
             backfill_config: None,
+            bootstrap_config: None,
+            testing_config: Some(testing_config),
+            mode: ProcessorMode::Testing,
         },
         processor_name,
     )
@@ -48,10 +56,11 @@ mod tests {
         },
     };
     use aptos_indexer_processor_sdk::traits::processor_trait::ProcessorTrait;
-    use aptos_indexer_test_transactions::{
+    use aptos_indexer_test_transactions::json_transactions::generated_transactions::{
         IMPORTED_DEVNET_TXNS_78753811_COIN_TRANSFER_WITH_V2_EVENTS,
         IMPORTED_DEVNET_TXNS_78753831_TOKEN_V1_MINT_TRANSFER_WITH_V2_EVENTS,
         IMPORTED_DEVNET_TXNS_78753832_TOKEN_V2_MINT_TRANSFER_WITH_V2_EVENTS,
+        IMPORTED_MAINNET_TXNS_554229017_EVENTS_WITH_NO_EVENT_SIZE_INFO,
         IMPORTED_TESTNET_TXNS_1255836496_V2_FA_METADATA_, IMPORTED_TESTNET_TXNS_1_GENESIS,
         IMPORTED_TESTNET_TXNS_278556781_V1_COIN_REGISTER_FA_METADATA,
         IMPORTED_TESTNET_TXNS_2_NEW_BLOCK_EVENT, IMPORTED_TESTNET_TXNS_3_EMPTY_TXN,
@@ -151,6 +160,19 @@ mod tests {
         .await;
     }
 
+    // This is a test for the validator txn with missing events
+    // This happens because we did not fully backfill validator txn events
+    // so GRPC can return a txn with event size info but no events
+    // We expect no events parsed
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn mainnet_events_processor_validator_txn_missing_events() {
+        process_single_mainnet_event_txn(
+            IMPORTED_MAINNET_TXNS_554229017_EVENTS_WITH_NO_EVENT_SIZE_INFO, // this is misnamed, but it's the validatortxn with missing events
+            Some("validator_txn_missing_events".to_string()),
+        )
+        .await;
+    }
+
     // Example 2: Test for multiple transactions handling
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn testnet_events_processor_db_output_scenario_testing() {
@@ -216,6 +238,10 @@ mod tests {
 
     async fn process_single_testnet_event_txn(txn: &[u8], test_case_name: Option<String>) {
         process_single_event_txn(txn, test_case_name, "imported_testnet_txns").await
+    }
+
+    async fn process_single_mainnet_event_txn(txn: &[u8], test_case_name: Option<String>) {
+        process_single_event_txn(txn, test_case_name, "imported_mainnet_txns").await
     }
 
     // Helper function to abstract out the single transaction processing

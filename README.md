@@ -53,3 +53,13 @@ To set up and run the project, please refer to the following link for detailed i
 - To learn more about the protos and the code generated from those protos see [protos/](https://github.com/aptos-labs/aptos-core/tree/main/protos) in aptos-core.
 
 
+# Aptos Core Processors
+These are the core processors that index data for the [Indexer API](https://aptos.dev/en/build/indexer/aptos-hosted). 
+The core processors live in the `sdk-processor` crate and are written in Rust using the [Indexer SDK](https://aptos.dev/en/build/indexer/indexer-sdk).
+Read more about indexing on Aptos [here](https://aptos.dev/en/build/indexer).
+If you want to create a custom processor to index your contract, start with our [Quickstart Guide](https://aptos.dev/en/build/indexer/indexer-sdk/quickstart).
+
+> [!WARNING]  
+> For production-grade indexers, we recommend using the [Indexer SDK](https://aptos.dev/en/build/indexer/indexer-sdk) to write your custom processor.
+> The Python implementation is known to have a grpc deserialization recursion limit. The issue is with the GRPC library and we haven't had a chance to look into this. Please proceed with caution.
+> The typescript implementation is known to get stuck when there are lots of data to process. The issue is with the GRPC client and we haven't had a chance to optimize. Please proceed with caution.

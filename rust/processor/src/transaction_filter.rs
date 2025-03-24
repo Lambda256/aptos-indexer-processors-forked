@@ -19,6 +19,8 @@ pub struct TransactionFilter {
     skip_sender_addresses: Option<ahash::HashSet<String>>,
     // Skip all transactions that aren't user transactions
     focus_user_transactions: bool,
+    // Skip transactions that start with these strings
+    skip_contract_prefix_names: Option<Vec<String>>,
 }
 
 impl TransactionFilter {
@@ -26,12 +28,14 @@ impl TransactionFilter {
         focus_contract_addresses: Option<ahash::HashSet<String>>,
         skip_sender_addresses: Option<ahash::HashSet<String>>,
         focus_user_transactions: bool,
+        skip_contract_prefix_names: Option<Vec<String>>,
     ) -> Self {
         // TODO: normalize addresses
         Self {
             focus_contract_addresses,
             skip_sender_addresses,
             focus_user_transactions,
+            skip_contract_prefix_names,
         }
     }
 
@@ -66,6 +70,23 @@ impl TransactionFilter {
                                 if let Some(module) = function.module.as_ref() {
                                     if !focus_contract_addresses.contains(&module.address) {
                                         return false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let Some(skip_contract_prefix_names) = &self.skip_contract_prefix_names {
+                    // Skip if contract prefix is in the skip_contract_prefix_names
+                    if let Some(payload) = utr.payload.as_ref() {
+                        if let Some(Payload::EntryFunctionPayload(efp)) = payload.payload.as_ref() {
+                            if let Some(function) = efp.function.as_ref() {
+                                if let Some(module) = function.module.as_ref() {
+                                    for prefix in skip_contract_prefix_names {
+                                        if module.name.starts_with(prefix) {
+                                            return false;
+                                        }
                                     }
                                 }
                             }

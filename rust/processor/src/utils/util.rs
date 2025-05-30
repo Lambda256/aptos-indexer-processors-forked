@@ -335,6 +335,12 @@ pub fn parse_timestamp(ts: &Timestamp, version: i64) -> chrono::NaiveDateTime {
             seconds: MAX_TIMESTAMP_SECS,
             nanos: 0,
         }
+    } else if ts.seconds < 0 {
+        // TODO: 음수 timestamp인 경우 Unix epoch (1970-01-01 00:00:00 UTC)를 반환. 임시조치
+        Timestamp {
+            seconds: 0,
+            nanos: 0,
+        }
     } else {
         *ts
     };

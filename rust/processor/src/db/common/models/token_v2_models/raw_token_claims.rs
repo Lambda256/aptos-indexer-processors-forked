@@ -21,6 +21,9 @@ use serde::{Deserialize, Serialize};
 // Potentially it'd also be useful to keep track of offers that were canceled.
 pub type TokenV1Claimed = AHashMap<String, TokenActivityHelperV1>;
 
+// Map to keep track of the metadata of token offers that were canceled. The key is the token data id of the offer.
+pub type TokenV1Canceled = AHashMap<String, TokenActivityHelperV1>;
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RawCurrentTokenPendingClaim {
     pub token_data_id_hash: String,
@@ -142,6 +145,7 @@ impl RawCurrentTokenPendingClaim {
         txn_timestamp: chrono::NaiveDateTime,
         table_handle_to_owner: &TableHandleToOwner,
         tokens_claimed: &TokenV1Claimed,
+        tokens_canceled: &TokenV1Canceled,
     ) -> anyhow::Result<Option<Self>> {
         let table_item_data = table_item.data.as_ref().unwrap();
 
@@ -167,6 +171,9 @@ impl RawCurrentTokenPendingClaim {
                 if let Some(token_claimed) = tokens_claimed.get(&token_data_id) {
                     maybe_owner_address = token_claimed.from_address.clone();
                 }
+                if let Some(token_canceled) = tokens_canceled.get(&token_data_id) {
+                    maybe_owner_address = token_canceled.from_address.clone();
+                }
             }
 
             let owner_address = maybe_owner_address.unwrap_or_else(|| {
@@ -174,8 +181,8 @@ impl RawCurrentTokenPendingClaim {
                     "Missing table handle metadata for claim. \
                         Version: {}, table handle for PendingClaims: {}, all metadata: {:?} \
                         Missing token data id in token claim event. \
-                        token_data_id: {}, all token claim events: {:?}",
-                    txn_version, table_handle, table_handle_to_owner, token_data_id, tokens_claimed
+                        token_data_id: {}, all token claim events: {:?}, all token cancel events: {:?}",
+                    txn_version, table_handle, table_handle_to_owner, token_data_id, tokens_claimed, tokens_canceled
                 )
             });
 

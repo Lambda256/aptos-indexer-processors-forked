@@ -10,7 +10,7 @@ use crate::{
         common::models::{
             object_models::v2_object_utils::ObjectAggregatedDataMapping,
             token_v2_models::{
-                raw_token_claims::TokenV1Claimed,
+                raw_token_claims::{TokenV1Canceled, TokenV1Claimed},
                 v2_token_utils::{TokenStandard, V2TokenEvent},
             },
         },
@@ -203,6 +203,7 @@ impl RawTokenActivityV2 {
         event_index: i64,
         entry_function_id_str: &Option<String>,
         tokens_claimed: &mut TokenV1Claimed,
+        tokens_canceled: &mut TokenV1Canceled,
     ) -> anyhow::Result<Option<Self>> {
         let event_type = event.type_str.clone();
         if let Some(token_event) = &TokenEvent::from_event(&event_type, &event.data, txn_version)? {
@@ -286,12 +287,17 @@ impl RawTokenActivityV2 {
                     to_address: Some(inner.get_to_address()),
                     token_amount: inner.amount.clone(),
                 },
-                TokenEvent::CancelTokenOfferEvent(inner) => TokenActivityHelperV1 {
-                    token_data_id_struct: inner.token_id.token_data_id.clone(),
-                    property_version: inner.token_id.property_version.clone(),
-                    from_address: Some(event_account_address.clone()),
-                    to_address: Some(inner.get_to_address()),
-                    token_amount: inner.amount.clone(),
+                TokenEvent::CancelTokenOfferEvent(inner) => {
+                    let token_data_id_struct = inner.token_id.token_data_id.clone();
+                    let helper = TokenActivityHelperV1 {
+                        token_data_id_struct: inner.token_id.token_data_id.clone(),
+                        property_version: inner.token_id.property_version.clone(),
+                        from_address: Some(event_account_address.clone()),
+                        to_address: Some(inner.get_to_address()),
+                        token_amount: inner.amount.clone(),
+                    };
+                    tokens_canceled.insert(token_data_id_struct.to_id(), helper.clone());
+                    helper
                 },
                 TokenEvent::ClaimTokenEvent(inner) => {
                     let token_data_id_struct = inner.token_id.token_data_id.clone();
@@ -312,12 +318,17 @@ impl RawTokenActivityV2 {
                     to_address: Some(inner.get_to_address()),
                     token_amount: inner.amount.clone(),
                 },
-                TokenEvent::CancelOffer(inner) => TokenActivityHelperV1 {
-                    token_data_id_struct: inner.token_id.token_data_id.clone(),
-                    property_version: inner.token_id.property_version.clone(),
-                    from_address: Some(inner.get_from_address()),
-                    to_address: Some(inner.get_to_address()),
-                    token_amount: inner.amount.clone(),
+                TokenEvent::CancelOffer(inner) => {
+                    let token_data_id_struct = inner.token_id.token_data_id.clone();
+                    let helper = TokenActivityHelperV1 {
+                        token_data_id_struct: inner.token_id.token_data_id.clone(),
+                        property_version: inner.token_id.property_version.clone(),
+                        from_address: Some(inner.get_from_address()),
+                        to_address: Some(inner.get_to_address()),
+                        token_amount: inner.amount.clone(),
+                    };
+                    tokens_canceled.insert(token_data_id_struct.to_id(), helper.clone());
+                    helper
                 },
                 TokenEvent::Claim(inner) => {
                     let token_data_id_struct = inner.token_id.token_data_id.clone();

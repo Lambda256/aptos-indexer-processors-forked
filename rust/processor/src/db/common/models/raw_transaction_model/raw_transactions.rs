@@ -23,7 +23,7 @@ pub struct RawTransaction {
     pub vm_status: String,
     pub accumulator_root_hash: String,
     pub sender: String,
-    pub sequence_number: u64,
+    pub sequence_number: i64,
     pub max_gas_amount: u64,
     pub gas_unit_price: u64,
     pub expiration_timestamp_secs: i64,
@@ -45,7 +45,7 @@ impl RawTransaction {
         let txn_timestamp = parse_timestamp(txn.timestamp.as_ref().unwrap(), txn_version);
 
         let mut sender: String = "".to_string();
-        let mut sequence_number: u64 = 0;
+        let mut sequence_number: i64 = 0;
         let mut max_gas_amount: u64 = 0;
         let mut gas_unit_price: u64 = 0;
         let mut expiration_timestamp_secs: i64 = 0;
@@ -79,7 +79,7 @@ impl RawTransaction {
                     payload_type = ptype;
                     payload = pload;
                     sender = user_transaction.sender;
-                    sequence_number = user_transaction.sequence_number.to_u64().unwrap();
+                    sequence_number = user_transaction.sequence_number as i64;
                     max_gas_amount = user_transaction.max_gas_amount.to_u64().unwrap();
                     gas_unit_price = user_transaction.gas_unit_price.to_u64().unwrap();
                     expiration_timestamp_secs = user_transaction

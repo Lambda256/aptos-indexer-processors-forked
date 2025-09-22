@@ -60,19 +60,7 @@ jobs:
           sudo apt update && sudo apt install libdw-dev
           cargo update -p aptos-indexer-test-transactions
         working-directory: rust
-
-      # Cache Cargo
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          
+        
       # Run Integration Tests
       - name: Run Integration Tests
         id: tests

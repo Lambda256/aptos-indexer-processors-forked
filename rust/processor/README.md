@@ -34,6 +34,9 @@ The processors in this crate are deprecated. The new processors are in [`sdk-pro
               - "0x07"
             # Skip all transactions that aren't user transactions
             focus_user_transactions: false
+            # Skip transactions that start with these strings
+            skip_contract_prefix_names:
+              - "test"
           deprecated_tables: [               
             "MOVE_RESOURCES",                                  
             "WRITE_SET_CHANGES",                               
